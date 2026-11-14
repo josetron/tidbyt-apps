@@ -1,0 +1,87 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hello_world",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "apps/hello_world/hello_world.star"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "weather_now",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8081",
+        "apps/weather_now/weather_now.star"
+      ],
+      "port": 8081
+    },
+    {
+      "name": "mona_lisa",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8082",
+        "apps/mona_lisa/mona_lisa.star"
+      ],
+      "port": 8082
+    },
+    {
+      "name": "pixel_museum",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8083",
+        "apps/pixel_museum/pixel_museum.star"
+      ],
+      "port": 8083
+    },
+    {
+      "name": "weather_forecast",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8084",
+        "apps/weather_forecast/weather_forecast.star"
+      ],
+      "port": 8084
+    },
+    {
+      "name": "marketpulse",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8085",
+        "apps/marketpulse/marketpulse.star"
+      ],
+      "port": 8085
+    },
+    {
+      "name": "marketpulse_stocks",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8086",
+        "apps/marketpulse_stocks/marketpulse_stocks.star"
+      ],
+      "port": 8086
+    }
+  ]
+}

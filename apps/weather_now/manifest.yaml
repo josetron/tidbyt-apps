@@ -1,0 +1,8 @@
+---
+id: weather-now
+name: Weather Now
+summary: Current weather conditions
+desc: Current conditions for any US ZIP code with an animated pixel-art icon, big temperature, today's high/low and a rotating detail line (feels-like, humidity, wind, rain chance, UV).
+author: Tidbyt Dev
+fileName: weather_now.star
+packageName: weathernow

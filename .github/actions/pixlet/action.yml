@@ -1,0 +1,16 @@
+name: Install Pixlet
+description: Downloads the Pixlet CLI (cached between runs) and puts it on PATH
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: ~/pixlet
+        key: pixlet-${{ env.PIXLET_VERSION }}
+    - shell: bash
+      run: |
+        if [ ! -x ~/pixlet/pixlet ]; then
+          mkdir -p ~/pixlet
+          curl -fsSL "https://github.com/tidbyt/pixlet/releases/download/v${PIXLET_VERSION}/pixlet_${PIXLET_VERSION}_linux_amd64.tar.gz" | tar -xz -C ~/pixlet pixlet
+        fi
+        echo "$HOME/pixlet" >> "$GITHUB_PATH"

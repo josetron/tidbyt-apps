@@ -1,0 +1,8 @@
+---
+id: marketpulse
+name: MarketPulse
+summary: Market ETFs at a glance
+desc: S&P 500, Nasdaq-100 and Dow tracked through their ETF proxies SPY, QQQ and DIA, with green/red arrows, daily change, intraday sparklines, market status and a STALE flag when data is old.
+author: Tidbyt Dev
+fileName: marketpulse.star
+packageName: marketpulse

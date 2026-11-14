@@ -1,0 +1,78 @@
+# Pushes the Tidbyt apps from GitHub's servers, so no home PC is needed.
+# Secrets (Settings > Secrets and variables > Actions): TIDBYT_API_TOKEN, TIDBYT_DEVICE_ID.
+# GitHub may start scheduled runs a few minutes late; that is expected.
+name: Tidbyt
+
+on:
+  schedule:
+    - cron: "1-59/5 8-23 * * 1-5"   # market, every 5 min (script keeps 04:00-20:00 ET weekdays)
+    - cron: "1-59/5 0 * * 2-6"      # market, evening hour that falls after midnight UTC in winter
+    - cron: "33 * * * *"            # market hourly (nights, weekends: CLOSED cards stay current)
+    - cron: "7-59/15 * * * *"       # weather + Pixel Museum, every 15 min
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Which apps to push now"
+        type: choice
+        options: [market, weather, both]
+        default: both
+
+permissions:
+  contents: read
+  actions: write   # lets the keepalive step stop GitHub disabling the schedule after 60 quiet days
+
+env:
+  PIXLET_VERSION: "0.34.0"
+
+jobs:
+  market:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.group != 'weather' ||
+      github.event.schedule == '1-59/5 8-23 * * 1-5' ||
+      github.event.schedule == '1-59/5 0 * * 2-6' ||
+      github.event.schedule == '33 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency: { group: market, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pixlet
+      - name: Restore last good market snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/marketpulse_snapshot.json
+          key: mp-snapshot-${{ github.run_id }}
+          restore-keys: mp-snapshot-
+      - name: Fetch, render and push
+        env:
+          TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
+          TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
+          MP_PAGE: ${{ github.run_number }}
+          MODE: ${{ github.event_name == 'workflow_dispatch' && '--force' || (github.event.schedule == '33 * * * *' && '--hourly' || '') }}
+        run: python tools/cloud_push.py market $MODE
+      - name: Save market snapshot
+        if: always() && hashFiles('.cache/marketpulse_snapshot.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/marketpulse_snapshot.json
+          key: mp-snapshot-${{ github.run_id }}
+      - name: Keep the schedule alive
+        if: github.event.schedule == '33 * * * *'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tidbyt.yml/enable"
+
+  weather:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.group != 'market' ||
+      github.event.schedule == '7-59/15 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency: { group: weather, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pixlet
+      - name: Render and push
+        env:
+          TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
+          TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
+        run: python tools/cloud_push.py weather

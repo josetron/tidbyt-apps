@@ -1,0 +1,6 @@
+.cache/
+*.webp
+!apps/mona_lisa/mockup.webp
+!apps/pixel_museum/source/*.webp
+__pycache__/
+desktop.ini

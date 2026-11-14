@@ -1,0 +1,15 @@
+{
+  "_help": "Edit this list, then run: python tools/pixelate.py apps/pixel_museum. focus = [x, y] centre of the crop as fractions of the image (0..1); zoom = fraction of the image width to keep (1.0 = full width); mode = photo | pixelart | fit.",
+  "artworks": [
+    {"id": "mona_lisa", "title": "Mona Lisa", "artist": "Leonardo da Vinci", "year": "1503", "source": "source/mona_lisa.webp", "mode": "pixelart"},
+    {"id": "starry_night", "title": "The Starry Night", "artist": "Vincent van Gogh", "year": "1889", "source": "source/starry_night.jpg", "mode": "photo", "focus": [ 0.5, 0.42 ], "zoom": 1.0},
+    {"id": "great_wave", "title": "The Great Wave off Kanagawa", "artist": "Katsushika Hokusai", "year": "1831", "source": "source/great_wave.jpg", "mode": "photo", "focus": [ 0.5, 0.5 ], "zoom": 1.0},
+    {"id": "pearl_earring", "title": "Girl with a Pearl Earring", "artist": "Johannes Vermeer", "year": "1665", "source": "source/pearl_earring.jpg", "mode": "photo", "focus": [ 0.5, 0.42 ], "zoom": 1.0},
+    {"id": "the_scream", "title": "The Scream", "artist": "Edvard Munch", "year": "1893", "source": "source/the_scream.jpg", "mode": "photo", "focus": [ 0.5, 0.6 ], "zoom": 0.95},
+    {"id": "sunflowers", "title": "Sunflowers", "artist": "Vincent van Gogh", "year": "1888", "source": "source/sunflowers.jpg", "mode": "photo", "focus": [ 0.5, 0.4 ], "zoom": 1.0},
+    {"id": "water_lilies", "title": "Water Lilies", "artist": "Claude Monet", "year": "1906", "source": "source/water_lilies.jpg", "mode": "photo", "focus": [ 0.5, 0.5 ], "zoom": 1.0},
+    {"id": "the_kiss", "title": "The Kiss", "artist": "Gustav Klimt", "year": "1908", "source": "source/the_kiss.jpg", "mode": "photo", "focus": [ 0.55, 0.13 ], "zoom": 0.42},
+    {"id": "birth_of_venus", "title": "The Birth of Venus", "artist": "Sandro Botticelli", "year": "1485", "source": "source/birth_of_venus.jpg", "mode": "photo", "focus": [ 0.57, 0.3 ], "zoom": 0.55},
+    {"id": "wanderer", "title": "Wanderer above the Sea of Fog", "artist": "Caspar David Friedrich", "year": "1818", "source": "source/wanderer.jpg", "mode": "photo", "focus": [ 0.5, 0.36 ], "zoom": 1.0}
+  ]
+}

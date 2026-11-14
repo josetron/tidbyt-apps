@@ -1,0 +1,8 @@
+---
+id: marketpulse-stocks
+name: MarketPulse 6
+summary: Stocks with logos
+desc: Companion to MarketPulse. Six stocks (default AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ), three 5-second cards per refresh, alternating, with a pixel-art logo, price, green/red arrow, daily change and an intraday sparkline, plus market status and a STALE flag.
+author: Tidbyt Dev
+fileName: marketpulse_stocks.star
+packageName: marketpulsestocks
