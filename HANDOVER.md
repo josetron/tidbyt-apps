@@ -3,7 +3,7 @@
 How to pick this project up on another PC: what exists, how it fits together, how to
 set up a new machine, the lessons learned, and what to build next.
 
-_Last updated: 2026-11-13._
+_Last updated: 2026-11-13 (moved to GitHub Actions)._
 
 ---
 
@@ -15,8 +15,8 @@ _Last updated: 2026-11-13._
 | **Toolchain** | Pixlet v0.34.0 (official Tidbyt CLI, apps written in Starlark) |
 | **Project folder** | `G:\My Drive\Web Dev\Tidbyt` (Google Drive, so it syncs between PCs) |
 | **Rule** | **Every app lives in its own subfolder:** `apps/<app_name>/<app_name>.star` |
-| **Auto-refresh** | Windows scheduled task pushes the live apps every 15 min (see §4) |
-| **Latest** | **MarketPulse** + **MarketPulse Stocks**, live since 2026-11-13 with their own 5-min task (see §7) |
+| **Auto-refresh** | **GitHub Actions** in the public repo https://github.com/josetron/tidbyt-apps. No PC needed (see §4) |
+| **Latest** | **MarketPulse** + **MarketPulse Stocks** (see §7); everything moved to GitHub Actions on 2026-11-13 |
 
 ---
 
@@ -29,8 +29,8 @@ _Last updated: 2026-11-13._
 | `apps/weather_forecast` | `weatherforecast` | yes | Location title card → 3-day forecast with mini animated icons → 24 h temperature/rain chart that draws itself |
 | `apps/mona_lisa` | `monalisa` | no (static) | The user's pixel-art Mona Lisa mockup converted to 64×32 (`mockup.webp` → `mona_lisa_64x32.png`) |
 | `apps/pixel_museum` | `pixelmuseum` | yes | Gallery of 10 public-domain paintings as pixel art; 3 per showing (4 s each), transitions fade / slide / wipe / pixel-dissolve / random; each refresh moves to the next 3 |
-| `apps/marketpulse` | `marketpulse` | yes (own task) | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
-| `apps/marketpulse_stocks` | `marketpulsestocks` | yes (own task) | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
+| `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
+| `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
 Every app passes `pixlet lint` and `pixlet check`. Weather and museum apps have a `manifest.yaml`
 (author is a placeholder, "Tidbyt Dev", to be replaced before any community publishing).
@@ -61,7 +61,28 @@ Commons (public domain), with the downloaded originals in `apps/pixel_museum/sou
 
 ---
 
-## 4. Setting up a new PC
+## 4. Auto-refresh: GitHub Actions (since 2026-11-13)
+
+The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
+- **Repo:** https://github.com/josetron/tidbyt-apps (public). The project folder is its git working copy;
+  **commit and push changes to `main`** or the cloud keeps running the old code.
+- **Workflow:** `.github/workflows/tidbyt.yml` runs `tools/cloud_push.py`. Pixlet 0.34.0 is downloaded by
+  `.github/actions/pixlet`.
+  - Market: every 5 min on weekdays 04:00–20:00 ET, hourly otherwise.
+  - Weather + Pixel Museum: every 15 min.
+  - GitHub may start scheduled runs a few minutes late.
+- **Secrets** (repo Settings → Secrets → Actions): `TIDBYT_API_TOKEN`, `TIDBYT_DEVICE_ID`.
+- **Run now:** Actions tab → Tidbyt → Run workflow (market / weather / both), or
+  `gh workflow run tidbyt.yml -f group=both`.
+- The MarketPulse last-good snapshot is kept in the Actions cache. The stocks page alternates by run number.
+- **Keepalive:** the hourly job re-enables the workflow, because GitHub disables schedules after 60 days without commits.
+- **gh on this PC:** sign-in is stored in `%USERPROFILE%\.config\gh` (set `GH_CONFIG_DIR` to that), because
+  Claude's shells can't read AppData or Credential Manager. gh is at `C:\Program Files\GitHub CLI\gh.exe`.
+- **Old PC tasks** "Tidbyt - Weather Now" and "Tidbyt - MarketPulse" are **disabled**, not deleted. Their scripts
+  (`push_app.ps1`, `push_*.vbs`, `push_marketpulse.ps1`) remain as a local fallback.
+  **Never enable them while the workflow runs**, or the device gets double pushes.
+
+## 4b. Setting up a new PC (only needed to develop; the cloud does the pushing)
 
 1. **Install Pixlet:** download `pixlet_0.34.0_windows_amd64.tar.gz` from
    https://github.com/tidbyt/pixlet/releases, extract `pixlet.exe` to `C:\Pixlet\`, and add
