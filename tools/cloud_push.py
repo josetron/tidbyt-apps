@@ -5,6 +5,7 @@ Renders Tidbyt apps and pushes them to the device. Run by GitHub Actions
   python tools/cloud_push.py market [--hourly|--force]   MarketPulse + MarketPulse Stocks
   python tools/cloud_push.py weather            Weather Now, Weather Forecast, Pixel Museum, Pixel Aquarium, Astros News
   python tools/cloud_push.py movies             Now Playing (needs TMDB_API_KEY and Pillow)
+  python tools/cloud_push.py stars              Astros Stars (needs Pillow)
 
 Environment:
   TIDBYT_API_TOKEN, TIDBYT_DEVICE_ID   (GitHub secrets; never stored in the repo)
@@ -186,6 +187,35 @@ def run_movies():
                            {"snapshot": json.dumps(page, separators=(",", ":")), "page": "0"})
 
 
+def run_stars():
+    snap_path = os.path.join(ROOT, ".cache", "astros_stars.json")
+    snap = None
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import stars_snapshot
+        snap = stars_snapshot.build()
+        if not snap["players"]:
+            snap = None
+    except Exception as e:
+        log("stars fetch failed: %s" % e)
+    if snap:
+        os.makedirs(os.path.dirname(snap_path), exist_ok=True)
+        with open(snap_path, "w") as f:
+            json.dump(snap, f, separators=(",", ":"))
+        log("fetched %d players" % len(snap["players"]))
+    elif os.path.exists(snap_path):
+        with open(snap_path) as f:
+            snap = json.load(f)
+        log("using the last good player list")
+    else:
+        return False
+    # one star per hour, passed alone to keep the config value small
+    players = snap["players"]
+    one = dict(snap, players=[players[(int(time.time()) // 3600) % len(players)]])
+    return render_and_push("apps/astros_stars/astros_stars.star", "astrosstars",
+                           {"snapshot": json.dumps(one, separators=(",", ":")), "page": "0"})
+
+
 def run_weather():
     ok = True
     for star, iid in WEATHER_APPS:
@@ -202,6 +232,8 @@ def main():
         ok = run_weather()
     elif group == "movies":
         ok = run_movies()
+    elif group == "stars":
+        ok = run_stars()
     else:
         sys.exit(__doc__)
     sys.exit(0 if ok else 1)

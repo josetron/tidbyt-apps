@@ -1,0 +1,8 @@
+---
+id: astros-stars
+name: Astros Stars
+summary: Houston Astros star players
+desc: One Houston Astros star at a time with a pixel portrait, their name, their biggest recent achievement in orange and their season stats. Each refresh shows the next star.
+author: Tidbyt Dev
+fileName: astros_stars.star
+packageName: astrosstars

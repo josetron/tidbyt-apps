@@ -32,6 +32,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | `apps/pixel_aquarium` | `pixelaquarium` | yes | Animated fish tank: fish both ways at 4 depths, swaying seaweed, bubbles, a crab, a treasure chest that opens; day/night lighting by local time (jellyfish at night); new fish mix each refresh. Seamless 15.0 s loop |
 | `apps/now_playing` | `nowplaying` | yes (hourly) | Movies now in US theaters (TMDB). Each movie gets 7.5 s: a 3 s panning full-screen film still with the title, then the poster card (title, rating/runtime, red NEW tag for the past week, IMDb score counting up). 2 movies per showing; the cloud sends only the hour's pair. Snapshot built by `tools/movies_snapshot.py` (Pillow: blur + box-average, colour boost, lifted darks). Emulator: `python tools/make_preview.py`, then the `now_playing` launch entry (:8088) |
 | `apps/astros_news` | `astrosnews` | yes (15 min) | One Astros headline per refresh from MLB.com's official Astros RSS feed (no key): navy background, 13×13 pixel star-and-H logo, ASTROS header with orange rule, headline in 5x8 two lines at a time (pages flip), first action word in orange, age of the story (1D) top right. Part 1 of the "Astros Pulse" plan (see §8) |
+| `apps/astros_stars` | `astrosstars` | yes (hourly) | One Astros star per hour: 24×32 pixel portrait (MLB cut-out headshot on navy, made by `tools/stars_snapshot.py` with Pillow), name, biggest recent achievement in orange (AL MVP, 9X ALL-STAR…), then the bottom line cycles achievement year → 3 season stats. Pool = 40-man roster players with notable MLB awards + CORE ids. Data from the MLB Stats API (no key). Runs in the hourly `movies` job (`cloud_push.py stars`); preview copy via `tools/make_preview.py`. Part 2 of §8 |
 | `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
 | `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
@@ -60,7 +61,7 @@ Commons (public domain), with the downloaded originals in `apps/pixel_museum/sou
 
 `.claude/launch.json` defines emulator servers for Claude's browser preview
 (`hello_world` :8080, `weather_now` :8081, `mona_lisa` :8082, `pixel_museum` :8083,
-`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy), `astros_news` :8090). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
+`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy), `astros_news` :8090, `astros_stars` :8091 (preview copy)). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
 
 ---
 
@@ -119,7 +120,8 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
 **Gen 1 display**
 - **15-second cap.** An app's whole animation must stay under 15 s
   (`pixlet render --max_duration` defaults to 15000 ms). Verify it: render a GIF and sum the
-  frame durations. Budget the frames: `frames × delay ≤ 15000`.
+  frame durations. Budget the frames: `frames × delay ≤ 15000`. Use the GIF, not the WebP:
+  Pillow misreads the merged-frame durations of Pixlet's WebP (a 15 s app reads as 2.5 s).
 - **Very dark colours vanish** on Gen 1 LEDs. Keep "dim" UI colours brighter than about `#303030`.
 - Pixlet's WebP is lossy, and near-black noise (values 1–24) appears in the browser
   preview but is invisible on the device. Ignore it.
@@ -196,7 +198,7 @@ The Tidbyt playlist decides when each appears; each app decides what to show on 
 | App | Shows | Updates | Status |
 |---|---|---|---|
 | **Astros News** (`apps/astros_news`) | Logo + one short headline (scroll/flip if long). No portraits or scores | every 15 min | **done** |
-| **Astros Stars** | One player's pixel-art portrait + name + an achievement/stat (e.g. `YORDAN · AL MVP`). Rotate Altuve, Álvarez, Peña, Brown, other current stars | daily | to build |
+| **Astros Stars** | One player's pixel-art portrait + name + an achievement/stat (e.g. `YORDAN · AL MVP`). Rotate Altuve, Álvarez, Peña, Brown, other current stars | hourly (data daily) | **done** |
 | **Astros GameDay** | Live score + inning during games; next game date/time before; final score after. No headlines or portraits | every 1–3 min during games | to build |
 
 Style reference (from the user's mock-up): navy background, white-ringed star-and-H logo, white bold text with

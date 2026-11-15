@@ -116,6 +116,17 @@
         "apps/astros_news/astros_news.star"
       ],
       "port": 8090
+    },
+    {
+      "name": "astros_stars",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8091",
+        "apps/astros_stars/preview/astros_stars_preview.star"
+      ],
+      "port": 8091
     }
   ]
 }

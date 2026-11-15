@@ -14,7 +14,7 @@ on:
       group:
         description: "Which apps to push now"
         type: choice
-        options: [market, weather, movies, all]
+        options: [market, weather, movies, stars, all]
         default: all
 
 permissions:
@@ -61,9 +61,9 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tidbyt.yml/enable"
 
-  movies:
+  movies:   # hourly: Now Playing and Astros Stars
     if: >-
-      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'all') ||
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'stars' || github.event.inputs.group == 'all') ||
       github.event.schedule == '33 * * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -78,14 +78,21 @@ jobs:
           path: .cache
           key: movies-${{ github.run_id }}
           restore-keys: movies-
-      - name: Fetch, render and push
+      - name: Now Playing
+        if: github.event.inputs.group != 'stars'
         env:
           TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: python tools/cloud_push.py movies
+      - name: Astros Stars
+        if: always() && github.event.inputs.group != 'movies'
+        env:
+          TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
+          TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
+        run: python tools/cloud_push.py stars
       - name: Save movie cache
-        if: always() && hashFiles('.cache/now_playing.json') != ''
+        if: always() && (hashFiles('.cache/now_playing.json') != '' || hashFiles('.cache/astros_stars.json') != '')
         uses: actions/cache/save@v4
         with:
           path: .cache
