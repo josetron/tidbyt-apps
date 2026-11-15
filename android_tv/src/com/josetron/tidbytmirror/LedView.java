@@ -21,7 +21,8 @@ final class LedView extends View {
     private static final int H = 32;
     private static final int OFF_BELOW = 28;                     // brightest channel under this = unlit LED
     private static final int OFF_COLOR = Color.rgb(46, 48, 52);  // an unlit LED: a faint grey dot
-    private static final float FRAME_WOOD = 2.2f;                // wood thickness, in Tidbyt pixels
+    private static final float BRIGHTNESS = 0.70f;               // lit LEDs are dimmed to this share: a TV is far brighter than the panel
+    private static final float FRAME_WOOD = 2.2f;               // wood thickness, in Tidbyt pixels
     private static final float FRAME_GAP = 0.8f;                 // black bezel inside the wood
 
     private final Bitmap frame = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
@@ -139,7 +140,8 @@ final class LedView extends View {
                     dot.setColor(OFF_COLOR);
                     canvas.drawCircle(left + x * cell + half, cy, unlit, dot);
                 } else {
-                    dot.setColor(color | 0xFF000000);
+                    dot.setColor(Color.rgb((int) (Color.red(color) * BRIGHTNESS),
+                            (int) (Color.green(color) * BRIGHTNESS), (int) (Color.blue(color) * BRIGHTNESS)));
                     canvas.drawCircle(left + x * cell + half, cy, lit, dot);
                 }
             }
