@@ -21,7 +21,6 @@ final class LedView extends View {
     private static final int H = 32;
     private static final int OFF_BELOW = 28;                     // brightest channel under this = unlit LED
     private static final int OFF_COLOR = Color.rgb(46, 48, 52);  // an unlit LED: a faint grey dot
-    private static final float BRIGHTNESS = 0.70f;               // lit LEDs are dimmed to this share: a TV is far brighter than the panel
     private static final float FRAME_WOOD = 2.2f;               // wood thickness, in Tidbyt pixels
     private static final float FRAME_GAP = 0.8f;                 // black bezel inside the wood
 
@@ -42,6 +41,11 @@ final class LedView extends View {
     private String label = "";
     private long labelUntil;
     private String message = "Loading Tidbyt Mirror...";
+    private float brightness = 0.70f;  // lit LEDs are dimmed to this share: a TV is far brighter than the panel
+    private boolean showNames;         // show the app's name for a moment each time the app changes
+    private String[] menuLabels;       // the setup menu, when open: one label and one value per row
+    private String[] menuValues;
+    private int menuRow;
 
     LedView(Context context) {
         super(context);
@@ -55,7 +59,7 @@ final class LedView extends View {
         pausedAt = startedAt;
         label = name == null ? "" : name;
         labelText = paused ? label + "  (paused)" : label;
-        labelUntil = startedAt + 4000;
+        labelUntil = showNames ? startedAt + 4000 : 0;
         message = null;
         invalidate();
     }
@@ -76,6 +80,27 @@ final class LedView extends View {
         }
         paused = value;
         showLabel(paused ? label + "  (paused)" : label);
+    }
+
+    void setBrightness(float value) {
+        brightness = Math.max(0.2f, Math.min(1f, value));
+        invalidate();
+    }
+
+    void setShowNames(boolean value) {
+        showNames = value;
+        if (!value) {
+            labelUntil = 0;
+        }
+        invalidate();
+    }
+
+    /** Shows the setup menu (labels == null hides it). */
+    void setMenu(String[] labels, String[] values, int selectedRow) {
+        menuLabels = labels;
+        menuValues = values;
+        menuRow = selectedRow;
+        invalidate();
     }
 
     void setFramed(boolean value) {
@@ -99,6 +124,46 @@ final class LedView extends View {
     /** Length of the current animation in milliseconds (0 for a still picture). */
     int duration() {
         return movie == null ? 0 : movie.duration();
+    }
+
+    /** The setup menu: a dark card in the middle of the screen, one row per setting. */
+    private void drawMenu(Canvas canvas, int width, int height) {
+        float size = Math.max(22f, height / 30f);
+        float rowHeight = size * 2.2f, pad = size * 1.2f;
+        float cardWidth = Math.min(width * 0.6f, size * 30f);
+        float cardHeight = pad * 2 + size * 2.2f + rowHeight * menuLabels.length + size * 1.6f;
+        float x = (width - cardWidth) / 2f, y = (height - cardHeight) / 2f;
+
+        fill.setColor(0xE6101418);
+        rect.set(x, y, x + cardWidth, y + cardHeight);
+        canvas.drawRoundRect(rect, size * 0.6f, size * 0.6f, fill);
+
+        text.setTextSize(size * 1.15f);
+        text.setColor(Color.WHITE);
+        canvas.drawText("Tidbyt Mirror setup", x + pad, y + pad + size, text);
+
+        text.setTextSize(size);
+        float top = y + pad + size * 2.2f;
+        for (int i = 0; i < menuLabels.length; i++) {
+            float rowTop = top + i * rowHeight;
+            boolean selected = i == menuRow;
+            if (selected) {
+                fill.setColor(0xFF2A3A4C);
+                rect.set(x + pad * 0.5f, rowTop, x + cardWidth - pad * 0.5f, rowTop + rowHeight * 0.9f);
+                canvas.drawRoundRect(rect, size * 0.4f, size * 0.4f, fill);
+            }
+            float baseline = rowTop + rowHeight * 0.9f / 2f + size * 0.35f;
+            text.setColor(selected ? Color.WHITE : Color.rgb(170, 180, 190));
+            canvas.drawText(menuLabels[i], x + pad, baseline, text);
+            String value = selected ? "\u25C0  " + menuValues[i] + "  \u25B6" : menuValues[i];
+            canvas.drawText(value, x + cardWidth - pad - text.measureText(value), baseline, text);
+        }
+
+        text.setTextSize(size * 0.75f);
+        text.setColor(Color.rgb(125, 135, 148));
+        canvas.drawText("Up / Down: choose    Left / Right: change    OK or Back: close",
+                x + pad, y + cardHeight - pad * 0.8f, text);
+        text.setColor(Color.rgb(200, 208, 216));
     }
 
     @Override
@@ -140,8 +205,8 @@ final class LedView extends View {
                     dot.setColor(OFF_COLOR);
                     canvas.drawCircle(left + x * cell + half, cy, unlit, dot);
                 } else {
-                    dot.setColor(Color.rgb((int) (Color.red(color) * BRIGHTNESS),
-                            (int) (Color.green(color) * BRIGHTNESS), (int) (Color.blue(color) * BRIGHTNESS)));
+                    dot.setColor(Color.rgb((int) (Color.red(color) * brightness),
+                            (int) (Color.green(color) * brightness), (int) (Color.blue(color) * brightness)));
                     canvas.drawCircle(left + x * cell + half, cy, lit, dot);
                 }
             }
@@ -156,6 +221,10 @@ final class LedView extends View {
             fill.setColor(0xC0000000);
             canvas.drawRect(left, top + H * cell - size * 1.8f, left + textWidth + size * 1.2f, top + H * cell, fill);
             canvas.drawText(labelText, left + size * 0.6f, top + H * cell - size * 0.6f, text);
+        }
+
+        if (menuLabels != null) {
+            drawMenu(canvas, width, height);
         }
 
         if (movie != null && !paused && movie.duration() > 0 || now < labelUntil) {
