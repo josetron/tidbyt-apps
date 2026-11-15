@@ -27,7 +27,7 @@ import java.util.List;
  * Remote, while pictures play:
  *   Left / Right  previous / next app
  *   OK            pause
- *   Down          setup menu: brightness, unlit dots, app names, frame, screen saver and its start time, hidden apps
+ *   Down          setup menu: brightness, unlit dots, app names, frame and its thickness, screen saver and its start time, hidden apps
  *   Up            this app's menu: show or hide it on this TV, and its own settings
  *   Back          exit
  * In a menu: Up / Down choose a row, Left / Right change it, OK edits or confirms, Back closes.
@@ -35,7 +35,7 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final long MENU_CLOSES_MS = 30000;  // the setup menu goes away by itself when left alone
     private static final int NONE = 0, SETUP = 1, APP = 2;
-    private static final int SETUP_ROWS = 7, HIDDEN_ROW = 6;
+    private static final int SETUP_ROWS = 8, HIDDEN_ROW = 7;
     private static final int[] IDLE_MINUTES = {1, 2, 5, 10, 15, 30, 60};  // choices for when the screen saver starts
     private static final int FRAME_CHOICES = Player.WOODS.length + 1;  // the woods, then "no frame"
 
@@ -129,17 +129,18 @@ public final class MainActivity extends Activity {
         int hidden = player.hiddenCount();
         view.setMenu("Tidbyt Mirror setup",
                 new String[] {"Screen brightness", "Unlit dots", "Show app name on change", "Frame",
-                    "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
+                    "Frame thickness", "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
                 new String[] {
                     prefs.getInt("brightness", 70) + "%",
                     prefs.getInt("unlit", 42) == 0 ? "Off" : prefs.getInt("unlit", 42) + "%",
                     prefs.getBoolean("names", false) ? "On" : "Off",
                     frame < Player.WOODS.length ? Player.WOOD_NAMES[frame] : "No frame (full screen)",
+                    prefs.getInt("frame_thickness", 70) + "%",
                     isScreenSaver() ? "On" : "Off",
                     idleLabel(),
                     hidden == 0 ? "None" : hidden + " hidden  (OK: show all)",
                 },
-                new boolean[] {true, true, true, true, true, true, false},
+                new boolean[] {true, true, true, true, true, true, true, false},
                 row, "Up / Down: choose    Left / Right: change    Back: close");
         handler.removeCallbacks(closeMenu);
         handler.postDelayed(closeMenu, MENU_CLOSES_MS);
@@ -169,10 +170,15 @@ public final class MainActivity extends Activity {
                 editor.apply();
                 break;
             }
-            case 4:
+            case 4: {
+                int thickness = Math.min(200, Math.max(20, prefs.getInt("frame_thickness", 70) + 10 * direction));
+                prefs.edit().putInt("frame_thickness", thickness).apply();
+                break;
+            }
+            case 5:
                 setScreenSaver(!isScreenSaver());
                 break;
-            case 5:
+            case 6:
                 changeIdleTime(direction);
                 break;
             default:

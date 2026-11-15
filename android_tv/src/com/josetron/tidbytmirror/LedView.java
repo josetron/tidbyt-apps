@@ -42,6 +42,7 @@ final class LedView extends View {
     private long labelUntil;
     private String message = "Loading Tidbyt Mirror...";
     private float brightness = 0.70f;  // lit LEDs are dimmed to this share: a TV is far brighter than the panel
+    private float frameWood = FRAME_WOOD * 0.7f;   // wood thickness in Tidbyt pixels, as set in the setup menu
     private int offColor = Color.rgb(19, 20, 22);  // unlit LEDs, at the level set in the setup menu
     private boolean showNames;         // show the app's name for a moment each time the app changes
     private String menuTitle;          // a menu, when open: a title, then one label and one value per row
@@ -100,6 +101,12 @@ final class LedView extends View {
     void setUnlit(float level) {
         level = Math.max(0f, Math.min(1f, level));
         offColor = Color.rgb((int) (OFF_RGB[0] * level), (int) (OFF_RGB[1] * level), (int) (OFF_RGB[2] * level));
+        invalidate();
+    }
+
+    /** Frame thickness as a share of the original (1 = 2.2 Tidbyt pixels of wood). */
+    void setFrameThickness(float share) {
+        frameWood = FRAME_WOOD * Math.max(0.2f, Math.min(2f, share));
         invalidate();
     }
 
@@ -203,7 +210,7 @@ final class LedView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         int width = getWidth(), height = getHeight();
-        float margin = framed ? FRAME_WOOD + FRAME_GAP : 0f;  // in Tidbyt pixels
+        float margin = framed ? frameWood + FRAME_GAP : 0f;  // in Tidbyt pixels
         float cell = Math.min(width / (W + 2 * margin), height / (H + 2 * margin));
         if (framed) {
             cell = (float) Math.floor(cell);
@@ -214,7 +221,7 @@ final class LedView extends View {
         float left = (width - W * cell) / 2f, top = (height - H * cell) / 2f;
 
         if (framed) {
-            float outer = (FRAME_WOOD + FRAME_GAP) * cell, gap = FRAME_GAP * cell;
+            float outer = (frameWood + FRAME_GAP) * cell, gap = FRAME_GAP * cell;
             fill.setColor(wood);
             rect.set(left - outer, top - outer, left + W * cell + outer, top + H * cell + outer);
             canvas.drawRoundRect(rect, cell * 1.2f, cell * 1.2f, fill);

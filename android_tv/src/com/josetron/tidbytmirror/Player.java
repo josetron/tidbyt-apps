@@ -65,6 +65,7 @@ final class Player {
     void applyLook() {
         view.setBrightness(Math.min(100, Math.max(20, prefs.getInt("brightness", 70))) / 100f);
         view.setUnlit(Math.min(100, Math.max(0, prefs.getInt("unlit", 42))) / 100f);
+        view.setFrameThickness(Math.min(200, Math.max(20, prefs.getInt("frame_thickness", 70))) / 100f);
         view.setFramed(prefs.getBoolean("frame", true));
         view.setWood(WOODS[Math.min(WOODS.length - 1, Math.max(0, prefs.getInt("wood", 1)))]);
         view.setShowNames(prefs.getBoolean("names", false));
