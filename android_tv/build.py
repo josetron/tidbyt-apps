@@ -99,6 +99,8 @@ def main():
         if "--device" in sys.argv:
             adb += ["-s", sys.argv[sys.argv.index("--device") + 1]]
         print(run(*adb, "install", "-r", apk).strip())
+        # lets the app's setup menu switch the TV's screen saver to itself (and back)
+        run(*adb, "shell", "pm", "grant", PACKAGE, "android.permission.WRITE_SECURE_SETTINGS")
         run(*adb, "shell", "am", "start", "-n", PACKAGE + "/.MainActivity")
         print("started on the device")
 

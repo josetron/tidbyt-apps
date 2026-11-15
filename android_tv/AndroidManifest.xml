@@ -5,6 +5,9 @@
     package="com.josetron.tidbytmirror">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets the setup menu make this app the TV's screen saver. Android only gives it to apps that
+         were granted it from a PC (build.py with its install option runs: adb shell pm grant). -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -14,7 +17,9 @@
         android:banner="@drawable/banner"
         android:icon="@drawable/icon"
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+        android:usesCleartextTraffic="true">
+        <!-- cleartext: the PC mirror on the home network is plain http -->
 
         <activity
             android:name=".MainActivity"
@@ -29,5 +34,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The screen saver ("dream") -->
+        <service
+            android:name=".MirrorDream"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

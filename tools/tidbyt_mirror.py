@@ -24,6 +24,13 @@ Using the window
   python  tools/tidbyt_mirror.py --fetch-store   downloads the store apps installed on the device
   python  tools/tidbyt_mirror.py --feed <dir>    renders every app once into <dir> with a manifest.json
                                                  (no window; used by GitHub Actions for the Android TV app)
+  python  tools/tidbyt_mirror.py --feed-one <id> re-renders one app in the published feed (used after the
+                                                 TV app saves a setting; see "TV settings" below)
+
+TV settings: the Android TV app (android_tv/) cannot render apps, so when a setting is changed on the TV
+it sends it to this program over the home network (port 8766). This program then publishes the setting
+to the mirror-settings branch on GitHub (PUBLIC), where the cloud job reads it, and refreshes that app's
+picture in the mirror-feed branch. So the PC only has to be on while a setting is being changed.
 
 How it works: the Tidbyt API can list the installations on the device but cannot return their
 images, so this renders the apps with Pixlet and plays them in the device's order.
@@ -51,7 +58,9 @@ import sys
 import threading
 import time
 from datetime import datetime
+import urllib.parse
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 try:  # the window needs these; the headless --feed mode (GitHub Actions) does not
     import tkinter as tk
@@ -65,6 +74,7 @@ OUT = os.path.join(ROOT, ".cache", "mirror")
 HOME = os.path.join(os.path.expanduser("~"), ".tidbyt")
 DEVICE_ID = "urgently-principal-smashing-hippo-90b"
 LOCK_PORT = 8765  # only used to make sure one mirror runs at a time
+RELAY_PORT = 8766  # the Android TV app sends setting changes here (home network only)
 PIXLET = os.environ.get("PIXLET", "pixlet")
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # keep pixlet from flashing a console window
 
@@ -307,6 +317,271 @@ def fetch_schema(star):
         proc.kill()
 
 
+# ---------------------------------------------------------------------------
+# Settings published for the Android TV app (PUBLIC: the mirror-settings branch on GitHub)
+# ---------------------------------------------------------------------------
+
+SETTINGS_REPO = os.path.join(ROOT, ".cache", "settings_repo")  # working copy of the mirror-settings branch
+FEED_REPO = os.path.join(ROOT, ".cache", "feed_repo")          # working copy of the mirror-feed branch
+_published = None
+
+
+def repo_slug():
+    """owner/name of the GitHub repository."""
+    slug = os.environ.get("GITHUB_REPOSITORY")
+    if slug:
+        return slug
+    try:
+        url = subprocess.run(["git", "-C", ROOT, "remote", "get-url", "origin"], capture_output=True, text=True,
+                             creationflags=NO_WINDOW).stdout.strip()
+        m = re.search(r"github\.com[:/](.+?)(?:\.git)?$", url)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "josetron/tidbyt-apps"
+
+
+def published_settings():
+    """{app id: {field: value}} as published for the TV. On this PC the local working copy is the
+    freshest; in GitHub Actions it is downloaded from the branch."""
+    global _published
+    if _published is None:
+        _published = {}
+        try:
+            local = os.path.join(SETTINGS_REPO, "settings.json")
+            if os.path.exists(local) and not os.environ.get("GITHUB_ACTIONS"):
+                with open(local, encoding="utf-8") as f:
+                    _published = json.load(f)
+            else:
+                url = "https://raw.githubusercontent.com/%s/mirror-settings/settings.json" % repo_slug()
+                with urllib.request.urlopen(url, timeout=20) as r:
+                    _published = json.load(r)
+        except Exception:
+            _published = {}
+        if not isinstance(_published, dict):
+            _published = {}
+    return _published
+
+
+def git(path, *args):
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
+    cmd = ["git", "-C", path, "-c", "credential.helper=", "-c", "credential.helper=manager",
+           "-c", "user.name=Tidbyt Mirror", "-c", "user.email=tidbyt-mirror@users.noreply.github.com"] + list(args)
+    return subprocess.run(cmd, capture_output=True, text=True, env=env, creationflags=NO_WINDOW)
+
+
+def branch_checkout(path, branch):
+    """A working copy of one branch at its latest commit (created empty if the branch is new)."""
+    url = "https://github.com/%s.git" % repo_slug()
+    if not os.path.isdir(os.path.join(path, ".git")):
+        os.makedirs(path, exist_ok=True)
+        git(path, "init", "-q", "-b", branch)
+        git(path, "remote", "add", "origin", url)
+    if git(path, "fetch", "--depth", "1", "origin", branch).returncode == 0:
+        git(path, "reset", "-q", "--hard", "FETCH_HEAD")
+        git(path, "clean", "-fdq")
+
+
+def branch_push(path, branch, message):
+    git(path, "add", "-A")
+    if git(path, "diff", "--cached", "--quiet").returncode == 0:
+        return True  # nothing changed
+    git(path, "commit", "-q", "-m", message)
+    r = git(path, "push", "origin", "HEAD:" + branch)
+    if r.returncode != 0:
+        log("push to %s failed: %s" % (branch, (r.stderr or r.stdout).strip()[-200:]))
+    return r.returncode == 0
+
+
+def publish_settings(key, values):
+    """Saves one app's settings to the mirror-settings branch (empty values = back to defaults)."""
+    global _published
+    branch_checkout(SETTINGS_REPO, "mirror-settings")
+    path = os.path.join(SETTINGS_REPO, "settings.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    if values:
+        data[key] = values
+    else:
+        data.pop(key, None)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=1, sort_keys=True)
+    _published = data
+    return branch_push(SETTINGS_REPO, "mirror-settings", "Settings for %s" % key)
+
+
+def feed_one(key):
+    """Re-renders one app with the published settings and updates it in the mirror-feed branch,
+    so the TV shows a changed setting within a minute instead of at the next cloud run."""
+    global OUT, FEED
+    import hashlib
+    branch_checkout(FEED_REPO, "mirror-feed")
+    OUT, FEED = FEED_REPO, True
+    refresh_device()
+    if key not in jobs:
+        log("feed-one: unknown app %s" % key)
+        return False
+    star, build, _ = jobs[key]
+    render(key, star, build)
+    if apps[key]["version"] == 0:
+        return False
+    manifest_path = os.path.join(FEED_REPO, "manifest.json")
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        manifest = {"apps": []}
+    with open(gif_path(key), "rb") as f:
+        digest = hashlib.sha1(f.read()).hexdigest()[:12]
+    entry = {"id": key, "name": apps[key]["name"], "file": os.path.basename(gif_path(key)),
+             "version": digest, "store": apps[key]["store"]}
+    found = False
+    for i, old in enumerate(manifest.get("apps", [])):
+        if old.get("id") == key:
+            manifest["apps"][i], found = entry, True
+    if not found:
+        manifest.setdefault("apps", []).append(entry)
+    manifest["generated"] = int(time.time())
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=1)
+    return branch_push(FEED_REPO, "mirror-feed", "Picture for %s" % key)
+
+
+# ---------------------------------------------------------------------------
+# Relay for the Android TV app (home network): app options out, changed settings in
+# ---------------------------------------------------------------------------
+
+relay_schemas = {}  # app id -> the app's settings schema, as last sent to the TV
+LOCATION_PARTS = (("locality", "place name"), ("lat", "latitude"), ("lng", "longitude"), ("timezone", "time zone"))
+
+
+def tv_fields(key):
+    """The app's options in the simple shape the TV understands: text, onoff or choice rows.
+    A location becomes four text rows ("location|lat"...), put back together on save."""
+    schema = fetch_schema(jobs[key][0])
+    relay_schemas[key] = schema
+    saved = published_settings().get(key, {})
+    fields = []
+    for field in schema:
+        kind, fid = field.get("type"), field.get("id")
+        if not fid:
+            continue
+        name = field.get("name", fid)
+        current = saved.get(fid, field.get("default", ""))
+        if kind == "onoff":
+            fields.append({"id": fid, "name": name, "type": "onoff", "value": str(current).lower()})
+        elif kind == "dropdown":
+            options = [{"label": o.get("display") or o.get("text") or o.get("value", ""), "value": o.get("value", "")}
+                       for o in field.get("options") or []]
+            fields.append({"id": fid, "name": name, "type": "choice", "options": options, "value": str(current)})
+        elif kind == "location":
+            try:
+                loc = json.loads(current) if current else json.loads(STORE_CONFIG["location"])
+            except ValueError:
+                loc = {}
+            for part, label in LOCATION_PARTS:
+                fields.append({"id": "%s|%s" % (fid, part), "name": "%s: %s" % (name, label), "type": "text",
+                               "value": str(loc.get(part, ""))})
+        elif kind in ("text", "datetime", "color"):
+            hint = {"datetime": "for example 2023-03-29 or 2023-03-29 08:30", "color": "#RRGGBB"}.get(kind, "")
+            fields.append({"id": fid, "name": name, "type": "text", "value": str(current), "hint": hint})
+    return fields
+
+
+def tv_save(key, raw):
+    """Turns what the TV sent back into the app's config values and publishes them."""
+    schema = relay_schemas.get(key) or fetch_schema(jobs[key][0])
+    kinds = {f.get("id"): f.get("type") for f in schema}
+    values, groups = {}, {}
+    for fid, value in raw.items():
+        value = str(value).strip()[:500]
+        if "|" in fid:
+            base, part = fid.split("|", 1)
+            if kinds.get(base) == "location":
+                groups.setdefault(base, {})[part] = value
+        elif kinds.get(fid) == "datetime":
+            if value:
+                values[fid] = normalize_datetime(value)
+        elif kinds.get(fid) in ("text", "color", "onoff", "dropdown") and value != "":
+            values[fid] = value
+    for base, loc in groups.items():
+        if loc.get("lat") and loc.get("lng"):
+            values[base] = json.dumps(loc)
+
+    data = load_app_settings()  # the Windows mirror uses the same settings from now on
+    if values:
+        data[key] = values
+    else:
+        data.pop(key, None)
+    save_app_settings(data)
+    due[key] = 0
+
+    ok = publish_settings(key, values)
+    if ok:  # refresh the TV's picture in the background (a separate process: it renders in feed mode)
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--feed-one", key], creationflags=NO_WINDOW)
+    return ok
+
+
+class RelayHandler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def reply(self, code, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(url.query)
+        try:
+            if url.path == "/ping":
+                self.reply(200, {"ok": True, "service": "tidbyt-mirror"})
+            elif url.path == "/schema":
+                key = (query.get("id") or [""])[0]
+                if key not in jobs:
+                    self.reply(404, {"ok": False, "error": "This app is not known to the PC mirror."})
+                else:
+                    self.reply(200, {"ok": True, "name": apps[key]["name"], "fields": tv_fields(key)})
+            else:
+                self.reply(404, {"ok": False, "error": "not found"})
+        except Exception as e:
+            log("relay: %s" % e)
+            self.reply(500, {"ok": False, "error": str(e)[:200]})
+
+    def do_POST(self):
+        try:
+            length = min(int(self.headers.get("Content-Length", "0")), 100000)
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            key, raw = body.get("id"), body.get("values")
+            if self.path != "/settings" or key not in jobs or not isinstance(raw, dict):
+                self.reply(400, {"ok": False, "error": "bad request"})
+                return
+            ok = tv_save(key, raw)
+            log("relay: settings for %s %s" % (key, "published" if ok else "NOT published"))
+            self.reply(200 if ok else 500, {"ok": ok, "error": "" if ok else "Could not publish to GitHub."})
+        except Exception as e:
+            log("relay: %s" % e)
+            self.reply(500, {"ok": False, "error": str(e)[:200]})
+
+
+def start_relay():
+    try:
+        server = ThreadingHTTPServer(("0.0.0.0", RELAY_PORT), RelayHandler)
+    except OSError as e:
+        log("TV settings relay not started: %s" % e)
+        return
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    log("TV settings relay listening on port %d" % RELAY_PORT)
+
+
 def gif_path(iid):
     return os.path.join(OUT, iid.replace(":", "_") + ".gif")
 
@@ -316,7 +591,8 @@ def render(iid, star, build):
     tmp = gif_path(iid)[:-4] + ".tmp.gif"
     try:
         config, note = build()
-        mine = {} if FEED else load_app_settings().get(iid, {})  # personal settings never go in the public feed
+        # the public feed only uses settings published on purpose from the TV; never this PC's private ones
+        mine = published_settings().get(iid, {}) if FEED else load_app_settings().get(iid, {})
         for k, v in mine.items():
             if k != "snapshot":
                 config[k] = v
@@ -1229,6 +1505,11 @@ def build_feed(out_dir):
 
 
 def main():
+    if "--feed-one" in sys.argv:
+        os.makedirs(OUT, exist_ok=True)
+        if sys.stdout is None:
+            sys.stdout = sys.stderr = open(os.path.join(OUT, "feed_one.log"), "w", encoding="utf-8")
+        sys.exit(0 if feed_one(sys.argv[sys.argv.index("--feed-one") + 1]) else 1)
     if "--feed" in sys.argv:
         out_dir = sys.argv[sys.argv.index("--feed") + 1]
         sys.exit(0 if build_feed(out_dir) else 1)
@@ -1247,6 +1528,7 @@ def main():
         log("Tidbyt Mirror is already running")
         return
     threading.Thread(target=worker, daemon=True).start()
+    start_relay()
     Mirror(keep_menu="--menu" in sys.argv).root.mainloop()
 
 

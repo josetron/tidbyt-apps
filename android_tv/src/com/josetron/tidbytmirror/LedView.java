@@ -43,9 +43,12 @@ final class LedView extends View {
     private String message = "Loading Tidbyt Mirror...";
     private float brightness = 0.70f;  // lit LEDs are dimmed to this share: a TV is far brighter than the panel
     private boolean showNames;         // show the app's name for a moment each time the app changes
-    private String[] menuLabels;       // the setup menu, when open: one label and one value per row
+    private String menuTitle;          // a menu, when open: a title, then one label and one value per row
+    private String[] menuLabels;
     private String[] menuValues;
+    private boolean[] menuArrows;      // rows changed with Left / Right get arrows around their value
     private int menuRow;
+    private String menuHint;
 
     LedView(Context context) {
         super(context);
@@ -79,7 +82,12 @@ final class LedView extends View {
             startedAt += now - pausedAt;  // carry on from the frame it stopped at
         }
         paused = value;
-        showLabel(paused ? label + "  (paused)" : label);
+        if (paused) {
+            showLabel(label + "  (paused)");
+        } else {
+            labelUntil = 0;
+            invalidate();
+        }
     }
 
     void setBrightness(float value) {
@@ -95,11 +103,14 @@ final class LedView extends View {
         invalidate();
     }
 
-    /** Shows the setup menu (labels == null hides it). */
-    void setMenu(String[] labels, String[] values, int selectedRow) {
+    /** Shows a menu (labels == null hides it). */
+    void setMenu(String title, String[] labels, String[] values, boolean[] arrows, int selectedRow, String hint) {
+        menuTitle = title;
         menuLabels = labels;
         menuValues = values;
+        menuArrows = arrows;
         menuRow = selectedRow;
+        menuHint = hint;
         invalidate();
     }
 
@@ -126,12 +137,14 @@ final class LedView extends View {
         return movie == null ? 0 : movie.duration();
     }
 
-    /** The setup menu: a dark card in the middle of the screen, one row per setting. */
+    /** A menu: a dark card in the middle of the screen, one row per setting (it scrolls when long). */
     private void drawMenu(Canvas canvas, int width, int height) {
         float size = Math.max(22f, height / 30f);
         float rowHeight = size * 2.2f, pad = size * 1.2f;
-        float cardWidth = Math.min(width * 0.6f, size * 30f);
-        float cardHeight = pad * 2 + size * 2.2f + rowHeight * menuLabels.length + size * 1.6f;
+        int visible = Math.min(menuLabels.length, 9);
+        int first = Math.max(0, Math.min(menuRow - visible / 2, menuLabels.length - visible));
+        float cardWidth = Math.min(width * 0.72f, size * 38f);
+        float cardHeight = pad * 2 + size * 2.2f + rowHeight * visible + size * 1.6f;
         float x = (width - cardWidth) / 2f, y = (height - cardHeight) / 2f;
 
         fill.setColor(0xE6101418);
@@ -140,12 +153,19 @@ final class LedView extends View {
 
         text.setTextSize(size * 1.15f);
         text.setColor(Color.WHITE);
-        canvas.drawText("Tidbyt Mirror setup", x + pad, y + pad + size, text);
+        canvas.drawText(menuTitle == null ? "" : menuTitle, x + pad, y + pad + size, text);
+        if (menuLabels.length > visible) {
+            String position = (menuRow + 1) + " / " + menuLabels.length;
+            text.setTextSize(size * 0.8f);
+            text.setColor(Color.rgb(125, 135, 148));
+            canvas.drawText(position, x + cardWidth - pad - text.measureText(position), y + pad + size, text);
+        }
 
         text.setTextSize(size);
         float top = y + pad + size * 2.2f;
-        for (int i = 0; i < menuLabels.length; i++) {
-            float rowTop = top + i * rowHeight;
+        for (int n = 0; n < visible; n++) {
+            int i = first + n;
+            float rowTop = top + n * rowHeight;
             boolean selected = i == menuRow;
             if (selected) {
                 fill.setColor(0xFF2A3A4C);
@@ -155,22 +175,31 @@ final class LedView extends View {
             float baseline = rowTop + rowHeight * 0.9f / 2f + size * 0.35f;
             text.setColor(selected ? Color.WHITE : Color.rgb(170, 180, 190));
             canvas.drawText(menuLabels[i], x + pad, baseline, text);
-            String value = selected ? "\u25C0  " + menuValues[i] + "  \u25B6" : menuValues[i];
+            String value = menuValues[i] == null ? "" : menuValues[i];
+            if (selected && menuArrows != null && menuArrows[i]) {
+                value = "\u25C0  " + value + "  \u25B6";
+            }
+            float room = cardWidth - pad * 2 - text.measureText(menuLabels[i]) - size;
+            while (value.length() > 4 && text.measureText(value) > room) {  // long values are cut to fit
+                value = value.substring(0, value.length() - 4) + "...";
+            }
             canvas.drawText(value, x + cardWidth - pad - text.measureText(value), baseline, text);
         }
 
         text.setTextSize(size * 0.75f);
         text.setColor(Color.rgb(125, 135, 148));
-        canvas.drawText("Up / Down: choose    Left / Right: change    OK or Back: close",
-                x + pad, y + cardHeight - pad * 0.8f, text);
+        canvas.drawText(menuHint == null ? "" : menuHint, x + pad, y + cardHeight - pad * 0.8f, text);
         text.setColor(Color.rgb(200, 208, 216));
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         int width = getWidth(), height = getHeight();
-        float margin = framed ? FRAME_WOOD + FRAME_GAP : 0.5f;  // in Tidbyt pixels
-        float cell = (float) Math.floor(Math.min(width / (W + 2 * margin), height / (H + 2 * margin)));
+        float margin = framed ? FRAME_WOOD + FRAME_GAP : 0f;  // in Tidbyt pixels
+        float cell = Math.min(width / (W + 2 * margin), height / (H + 2 * margin));
+        if (framed) {
+            cell = (float) Math.floor(cell);
+        }  // without a frame the panel fills the screen from edge to edge
         if (cell < 2) {
             return;
         }
