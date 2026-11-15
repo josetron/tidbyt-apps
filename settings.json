@@ -3,6 +3,12 @@
   "birthdate": "2023-04-29T00:00:00-05:00",
   "name": "Canela"
  },
+ "store:hurricanetracker": {
+  "basin": "atlantic",
+  "hide_quiet": "true",
+  "location": "{\"locality\": \"Dripping Springs\", \"lat\": \"30.19\", \"lng\": \"-98.09\", \"timezone\": \"America/Chicago\"}",
+  "scroll": "60"
+ },
  "store:states-visited": {
   "AL": "false",
   "AR": "false",
