@@ -30,6 +30,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | `apps/mona_lisa` | `monalisa` | no (static) | The user's pixel-art Mona Lisa mockup converted to 64×32 (`mockup.webp` → `mona_lisa_64x32.png`) |
 | `apps/pixel_museum` | `pixelmuseum` | yes | Gallery of 10 public-domain paintings as pixel art; 3 per showing (4 s each), transitions fade / slide / wipe / pixel-dissolve / random; each refresh moves to the next 3 |
 | `apps/pixel_aquarium` | `pixelaquarium` | yes | Animated fish tank: fish both ways at 4 depths, swaying seaweed, bubbles, a crab, a treasure chest that opens; day/night lighting by local time (jellyfish at night); new fish mix each refresh. Seamless 15.0 s loop |
+| `apps/now_playing` | `nowplaying` | yes (hourly) | Movies now in US theaters (TMDB): poster, title, rating/runtime, red NEW tag for the past week, IMDb score counting up. 2 movies × 7.5 s per showing, next pair each hour. Snapshot built by `tools/movies_snapshot.py` (Pillow downscales posters to 21×32) |
 | `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
 | `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
@@ -72,9 +73,13 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
   - Market: every 5 min on weekdays 04:00–20:00 ET, hourly otherwise.
   - Weather + Pixel Museum: every 15 min.
   - GitHub may start scheduled runs a few minutes late.
-- **Secrets** (repo Settings → Secrets → Actions): `TIDBYT_API_TOKEN`, `TIDBYT_DEVICE_ID`.
-- **Run now:** Actions tab → Tidbyt → Run workflow (market / weather / both), or
-  `gh workflow run tidbyt.yml -f group=both`.
+- **Secrets** (repo Settings → Secrets → Actions): `TIDBYT_API_TOKEN`, `TIDBYT_DEVICE_ID`, `TMDB_API_KEY`
+  (the TMDB v3 key; also kept locally in `%USERPROFILE%\.tidbyt	mdb_api_key.txt`).
+- **Movies job:** hourly. It downloads IMDb's `title.ratings.tsv.gz` at most once a day (Actions cache).
+- **Git lock files:** Google Drive can leave `.git\*.lock` behind. If git says "Unable to create ... .lock: File exists"
+  and no git process is running, delete that lock file and retry.
+- **Run now:** Actions tab → Tidbyt → Run workflow (market / weather / movies / all), or
+  `gh workflow run tidbyt.yml -f group=all`.
 - The MarketPulse last-good snapshot is kept in the Actions cache. The stocks page alternates by run number.
 - **Keepalive:** the hourly job re-enables the workflow, because GitHub disables schedules after 60 days without commits.
 - **gh on this PC:** sign-in is stored in `%USERPROFILE%\.config\gh` (set `GH_CONFIG_DIR` to that), because

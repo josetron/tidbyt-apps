@@ -14,8 +14,8 @@ on:
       group:
         description: "Which apps to push now"
         type: choice
-        options: [market, weather, movies, both]
-        default: both
+        options: [market, weather, movies, all]
+        default: all
 
 permissions:
   contents: read
@@ -27,7 +27,7 @@ env:
 jobs:
   market:
     if: >-
-      github.event_name == 'workflow_dispatch' && github.event.inputs.group != 'weather' ||
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'market' || github.event.inputs.group == 'all') ||
       github.event.schedule == '1-59/5 8-23 * * 1-5' ||
       github.event.schedule == '1-59/5 0 * * 2-6' ||
       github.event.schedule == '33 * * * *'
@@ -63,7 +63,7 @@ jobs:
 
   movies:
     if: >-
-      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'both') ||
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'all') ||
       github.event.schedule == '33 * * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -93,7 +93,7 @@ jobs:
 
   weather:
     if: >-
-      github.event_name == 'workflow_dispatch' && github.event.inputs.group != 'market' ||
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'weather' || github.event.inputs.group == 'all') ||
       github.event.schedule == '7-59/15 * * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 8
