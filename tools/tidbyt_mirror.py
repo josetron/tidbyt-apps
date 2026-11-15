@@ -540,9 +540,10 @@ def off_layer(cell):
     return ImageChops.multiply(layer, mask.convert("RGB"))
 
 
-WOOD = (164, 116, 72)       # the Tidbyt's walnut-style frame
+WOOD = (43, 29, 20)         # dark walnut, like the Tidbyt's frame
 FRAME_WOOD = 2.2            # wood thickness, in Tidbyt pixels
 FRAME_GAP = 0.8             # black bezel between the wood and the first LEDs, in Tidbyt pixels
+CORNER_KEY = (1, 2, 3)      # painted in the frame's rounded-off corners; Windows shows it as see-through
 
 
 def frame_margin(cell):
@@ -550,24 +551,29 @@ def frame_margin(cell):
 
 
 def frame_image(cell):
-    """The wooden frame with a black opening for the screen; the picture is pasted into it."""
+    """The wooden frame with rounded corners and a black opening for the screen; the picture is
+    pasted into it."""
     wood, margin = max(4, round(cell * FRAME_WOOD)), frame_margin(cell)
     w, h = W * cell + 2 * margin, H * cell + 2 * margin
-    im = Image.new("RGB", (w, h), WOOD)
+
+    def tint(amount):
+        return tuple(max(0, min(255, c + amount)) for c in WOOD)
+
+    im = Image.new("RGB", (w, h), CORNER_KEY)
     d = ImageDraw.Draw(im)
+    radius = max(3, round(cell * 1.2))
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=WOOD)
     rnd = random.Random(7)  # the same grain every time
-    for y in range(h):      # horizontal grain: slightly lighter and darker streaks
-        if rnd.random() < 0.55:
-            shade = rnd.randint(-16, 12)
+    for y in range(radius, h - radius):  # faint horizontal grain
+        if rnd.random() < 0.5:
             x0 = rnd.randint(0, w // 2)
-            d.line((x0, y, x0 + rnd.randint(w // 4, w), y), fill=tuple(max(0, min(255, c + shade)) for c in WOOD))
-    for i in range(2):      # light top-left edge, darker bottom-right edge
-        d.line((i, i, w - 1 - i, i), fill=(196, 148, 100))
-        d.line((i, i, i, h - 1 - i), fill=(186, 138, 92))
-        d.line((i, h - 1 - i, w - 1 - i, h - 1 - i), fill=(104, 70, 40))
-        d.line((w - 1 - i, i, w - 1 - i, h - 1 - i), fill=(116, 80, 46))
-    d.rectangle((wood - 1, wood - 1, w - wood, h - wood), fill=(84, 56, 32))  # shadow line inside the wood
-    d.rectangle((wood, wood, w - 1 - wood, h - 1 - wood), fill=(0, 0, 0))      # the panel
+            d.line((x0, y, min(w - 1, x0 + rnd.randint(w // 4, w)), y), fill=tint(rnd.randint(-7, 6)))
+    for y in list(range(2, radius)) + list(range(h - radius, h - 2)):  # grain on the top and bottom rails
+        if rnd.random() < 0.5:
+            d.line((radius, y, w - 1 - radius, y), fill=tint(rnd.randint(-7, 6)))
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, outline=tint(-14))       # outer edge
+    d.rectangle((wood - 1, wood - 1, w - wood, h - wood), fill=tint(-20))              # shadow inside the wood
+    d.rectangle((wood, wood, w - 1 - wood, h - 1 - wood), fill=(0, 0, 0))               # the panel
     return im
 
 
@@ -607,6 +613,10 @@ class Mirror:
         root.title("Tidbyt Mirror")
         root.overrideredirect(True)  # frameless
         root.configure(bg="#000000")
+        try:
+            root.attributes("-transparentcolor", "#%02x%02x%02x" % CORNER_KEY)
+        except tk.TclError:
+            pass  # not Windows: the corners stay square
         root.attributes("-topmost", self.on_top)
         x, y = int(s.get("x", 200)), int(s.get("y", 200))
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
