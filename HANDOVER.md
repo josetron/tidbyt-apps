@@ -33,6 +33,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | `apps/now_playing` | `nowplaying` | yes (hourly) | Movies now in US theaters (TMDB). Each movie gets 7.5 s: a 3 s panning full-screen film still with the title, then the poster card (title, rating/runtime, red NEW tag for the past week, IMDb score counting up). 2 movies per showing; the cloud sends only the hour's pair. Snapshot built by `tools/movies_snapshot.py` (Pillow: blur + box-average, colour boost, lifted darks). Emulator: `python tools/make_preview.py`, then the `now_playing` launch entry (:8088) |
 | `apps/astros_news` | `astrosnews` | yes (15 min) | One Astros headline per refresh from MLB.com's official Astros RSS feed (no key): navy background, 13×13 pixel star-and-H logo, ASTROS header with orange rule, headline in 5x8 two lines at a time (pages flip), first action word in orange, age of the story (1D) top right. Part 1 of the "Astros Pulse" plan (see §8) |
 | `apps/astros_stars` | `astrosstars` | yes (hourly) | One Astros star per hour: 24×32 pixel portrait (MLB cut-out headshot on navy, made by `tools/stars_snapshot.py` with Pillow), name, biggest recent achievement in orange (AL MVP, 9X ALL-STAR…), then the bottom line cycles achievement year → 3 season stats. Pool = 40-man roster players with notable MLB awards + CORE ids. Data from the MLB Stats API (no key). Runs in the hourly `movies` job (`cloud_push.py stars`); preview copy via `tools/make_preview.py`. Part 2 of §8 |
+| `apps/astros_gameday` | `astrosgameday` | yes (live) | Next game (opponent box in team colours, Houston time, countdown, SPRING/ALDS tags) → live score with inning, runners and outs → FINAL with W/L, then the next game. Part 3 of §8 |
 | `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
 | `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
@@ -61,7 +62,7 @@ Commons (public domain), with the downloaded originals in `apps/pixel_museum/sou
 
 `.claude/launch.json` defines emulator servers for Claude's browser preview
 (`hello_world` :8080, `weather_now` :8081, `mona_lisa` :8082, `pixel_museum` :8083,
-`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy), `astros_news` :8090, `astros_stars` :8091 (preview copy)). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
+`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy), `astros_news` :8090, `astros_stars` :8091 (preview copy), `astros_gameday` :8092 (preview copy)). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
 
 ---
 
@@ -199,9 +200,17 @@ The Tidbyt playlist decides when each appears; each app decides what to show on 
 |---|---|---|---|
 | **Astros News** (`apps/astros_news`) | Logo + one short headline (scroll/flip if long). No portraits or scores | every 15 min | **done** |
 | **Astros Stars** | One player's pixel-art portrait + name + an achievement/stat (e.g. `YORDAN · AL MVP`). Rotate Altuve, Álvarez, Peña, Brown, other current stars | hourly (data daily) | **done** |
-| **Astros GameDay** | Live score + inning during games; next game date/time before; final score after. No headlines or portraits | every 1–3 min during games | to build |
+| **Astros GameDay** | Live score + inning during games; next game date/time before; final score after. No headlines or portraits | every 90 s during games | **done** |
 
 Style reference (from the user's mock-up): navy background, white-ringed star-and-H logo, white bold text with
-orange accents. Data idea for GameDay and Stars: the MLB Stats API (`statsapi.mlb.com`, free, no key, Astros
-teamId 117). GameDay's 1–3 min live updates need the punctual external trigger (cron-job.org), because GitHub's
-own schedule runs only every 1–3 hours in practice.
+orange accents. Data for GameDay and Stars: the MLB Stats API (`statsapi.mlb.com`, free, no key, Astros
+teamId 117).
+
+**How GameDay stays live without cron-job.org:** the `gameday` job runs on the 15-minute schedule and calls
+`cloud_push.py gameday --follow`. When a game is live or starts within 5 h, the job does not exit: it pushes
+every 30 min until 10 min before first pitch, then every 90 s until the final is pushed (doubleheaders too),
+for up to ~5 h 40 min. Since GitHub's schedule fires at least every 1–3 h, a run always lands in that 5-hour
+window before a game. Public repo, so Actions minutes are free. `tools/gameday_snapshot.py` does the fetching
+in Python (40 s timeout, retries), because the MLB API sometimes takes 3–7 s and Pixlet's own HTTP gives up;
+the app only fetches directly when run without a snapshot (e.g. `pixlet check`, which therefore reports "too
+long to render": expected). Preview: `astros_gameday` :8092, `?date=2026-09-20` for a final, `&demo=live`.

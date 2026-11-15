@@ -6,6 +6,7 @@ Renders Tidbyt apps and pushes them to the device. Run by GitHub Actions
   python tools/cloud_push.py weather            Weather Now, Weather Forecast, Pixel Museum, Pixel Aquarium, Astros News
   python tools/cloud_push.py movies             Now Playing (needs TMDB_API_KEY and Pillow)
   python tools/cloud_push.py stars              Astros Stars (needs Pillow)
+  python tools/cloud_push.py gameday [--follow] Astros GameDay; --follow keeps running through a game
 
 Environment:
   TIDBYT_API_TOKEN, TIDBYT_DEVICE_ID   (GitHub secrets; never stored in the repo)
@@ -216,6 +217,49 @@ def run_stars():
                            {"snapshot": json.dumps(one, separators=(",", ":")), "page": "0"})
 
 
+FOLLOW_BUDGET = 340 * 60  # GitHub stops a job at 6 h; leave room to finish cleanly
+LIVE_EVERY = 90           # seconds between pushes during a game
+
+
+def run_gameday(follow):
+    """Pushes the GameDay card. With --follow, when a game is live or starts within 5 hours,
+    keeps running: a push every 30 min until 10 min before first pitch, then every 90 s
+    until the final score is pushed (doubleheaders included)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import gameday_snapshot
+
+    def push():
+        try:
+            snap = gameday_snapshot.build()
+        except Exception as e:
+            log("gameday fetch failed: %s" % e)
+            return None
+        render_and_push("apps/astros_gameday/astros_gameday.star", "astrosgameday",
+                             {"snapshot": json.dumps(snap, separators=(",", ":"))}, attempts=2)
+        return snap
+
+    snap = push()
+    if not snap:
+        return False
+    if not follow:
+        return True
+    began = time.time()
+    while time.time() - began < FOLLOW_BUDGET:
+        ph, start = gameday_snapshot.phase(snap)
+        if ph == "live":
+            wait = LIVE_EVERY
+        elif ph == "soon":
+            wait = max(60, min(30 * 60, start.timestamp() - time.time() - 10 * 60))
+        else:
+            log("no game in progress or within 5 h; done")
+            return True
+        log("%s: next push in %d s" % (ph, wait))
+        time.sleep(wait)
+        snap = push() or snap
+    log("time budget used; the next scheduled run carries on")
+    return True
+
+
 def run_weather():
     ok = True
     for star, iid in WEATHER_APPS:
@@ -234,6 +278,8 @@ def main():
         ok = run_movies()
     elif group == "stars":
         ok = run_stars()
+    elif group == "gameday":
+        ok = run_gameday("--follow" in sys.argv)
     else:
         sys.exit(__doc__)
     sys.exit(0 if ok else 1)

@@ -1,0 +1,8 @@
+---
+id: astros-gameday
+name: Astros GameDay
+summary: Houston Astros game day
+desc: Houston Astros games. Before a game, the opponent, first-pitch time and a countdown; during it, the live score, inning, runners and outs; after it, the final score with W or L, then the next game.
+author: Tidbyt Dev
+fileName: astros_gameday.star
+packageName: astrosgameday

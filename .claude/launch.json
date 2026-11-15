@@ -127,6 +127,17 @@
         "apps/astros_stars/preview/astros_stars_preview.star"
       ],
       "port": 8091
+    },
+    {
+      "name": "astros_gameday",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8092",
+        "apps/astros_gameday/preview/astros_gameday_preview.star"
+      ],
+      "port": 8092
     }
   ]
 }
