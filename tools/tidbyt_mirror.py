@@ -11,7 +11,8 @@ Using the window
     keep on top, close. It disappears
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
-  - "Frame" in the menu adds or removes the wooden frame around the screen.
+  - "Frame" in the menu adds or removes the wooden frame around the screen; the small slider
+    beside it sets the wood's shade, from dark walnut to light oak.
   - "Tray" in the menu moves the window's button from the taskbar to the notification area
     (system tray): click the tray icon to hide or show the window, right-click it for a menu.
   - "Apps" in the menu lists every app: untick one to leave it out of the rotation, "Show" jumps
@@ -540,7 +541,16 @@ def off_layer(cell):
     return ImageChops.multiply(layer, mask.convert("RGB"))
 
 
-WOOD = (43, 29, 20)         # dark walnut, like the Tidbyt's frame
+WOOD_DARK = (43, 29, 20)    # the frame's shade slider runs from this dark walnut...
+WOOD_LIGHT = (176, 126, 80) # ...to this light oak
+
+
+def wood_color(level):
+    """Frame colour for a slider position of 0 (darkest) to 100 (lightest)."""
+    t = min(100, max(0, level)) / 100.0
+    return tuple(round(a + (b - a) * t) for a, b in zip(WOOD_DARK, WOOD_LIGHT))
+
+
 FRAME_WOOD = 2.2            # wood thickness, in Tidbyt pixels
 FRAME_GAP = 0.8             # black bezel between the wood and the first LEDs, in Tidbyt pixels
 CORNER_KEY = (1, 2, 3)      # painted in the frame's rounded-off corners; Windows shows it as see-through
@@ -550,19 +560,22 @@ def frame_margin(cell):
     return max(4, round(cell * FRAME_WOOD)) + max(1, round(cell * FRAME_GAP))
 
 
-def frame_image(cell):
+def frame_image(cell, level):
     """The wooden frame with rounded corners and a black opening for the screen; the picture is
     pasted into it."""
     wood, margin = max(4, round(cell * FRAME_WOOD)), frame_margin(cell)
     w, h = W * cell + 2 * margin, H * cell + 2 * margin
 
+    base = wood_color(level)
+    contrast = 1 + level / 60.0  # lighter wood shows its grain and edges more
+
     def tint(amount):
-        return tuple(max(0, min(255, c + amount)) for c in WOOD)
+        return tuple(max(0, min(255, round(c + amount * contrast))) for c in base)
 
     im = Image.new("RGB", (w, h), CORNER_KEY)
     d = ImageDraw.Draw(im)
     radius = max(3, round(cell * 1.2))
-    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=WOOD)
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=base)
     rnd = random.Random(7)  # the same grain every time
     for y in range(radius, h - radius):  # faint horizontal grain
         if rnd.random() < 0.5:
@@ -586,6 +599,7 @@ class Mirror:
         self.on_top = bool(s.get("on_top", False))
         self.hidden = set(s.get("hidden", []))  # app ids left out of the rotation
         self.framed = bool(s.get("frame", True))  # wooden frame around the screen
+        self.wood = min(100, max(0, int(s.get("wood", 35))))  # frame shade: 0 dark walnut, 100 light oak
         self.frame_img = None
         self.frame_cell = 0
         self.tray_mode = bool(s.get("tray", False))  # icon in the notification area instead of the taskbar
@@ -644,6 +658,15 @@ class Mirror:
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
         self.tray_btn = button("", self.toggle_tray, side="right")
+        # frame shade slider, right next to the Frame switch (packed first, so it sits to its right)
+        self.wood_scale = tk.Scale(
+            bar, from_=0, to=100, orient="horizontal", showvalue=False, length=50, width=9, sliderlength=12,
+            bg=BAR_BG, fg=BAR_FG, troughcolor="#6b4a2e", activebackground=BAR_FG, highlightthickness=0, bd=0,
+            command=self.set_wood,
+        )
+        self.wood_scale.set(self.wood)
+        self.wood_scale.bind("<ButtonRelease-1>", lambda e: self.save_settings())
+        self.wood_scale.pack(side="right", padx=(0, 4))
         self.frame_btn = button("", self.toggle_frame, side="right")
         button("Settings", self.open_settings, side="right")
         button("Apps", self.open_apps, side="right")
@@ -695,7 +718,7 @@ class Mirror:
     def save_settings(self):
         data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top,
                 "hidden": sorted(self.hidden), "alpha": self.alpha, "tray": self.tray_mode,
-                "frame": self.framed}
+                "frame": self.framed, "wood": self.wood}
         try:
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -793,6 +816,11 @@ class Mirror:
     def window_size(self):
         margin = frame_margin(self.cell) if self.framed else 0
         return W * self.cell + 2 * margin, H * self.cell + 2 * margin
+
+    def set_wood(self, value):
+        self.wood = min(100, max(0, int(float(value))))
+        if self.framed:
+            self.draw()
 
     def toggle_frame(self):
         self.framed = not self.framed
@@ -1150,8 +1178,8 @@ class Mirror:
             unlit = brightest.point(lambda v: 255 if v < OFF_BELOW else 0).resize(big.size, Image.NEAREST)
             big = Image.composite(self.off, big, unlit)
         if self.framed:
-            if self.frame_cell != self.cell:
-                self.frame_img, self.frame_cell = frame_image(self.cell), self.cell
+            if self.frame_cell != (self.cell, self.wood):
+                self.frame_img, self.frame_cell = frame_image(self.cell, self.wood), (self.cell, self.wood)
             margin = frame_margin(self.cell)
             framed = self.frame_img.copy()
             framed.paste(big, (margin, margin))
