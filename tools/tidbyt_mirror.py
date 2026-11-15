@@ -7,7 +7,8 @@ Tidbyt Mirror: a frameless desktop window that plays the same apps as the Tidbyt
 Using the window
   - Drag anywhere on the picture to move it.
   - Drag the bottom-right corner, or turn the mouse wheel, to resize it (always 2:1).
-  - Hover over it for the menu: previous / next app, pause, keep on top, close. Esc also closes.
+  - Hover over it for the menu: previous / next app, pause, keep on top, close. It disappears
+    3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
 
 How it works: the Tidbyt API can list the installations on the device but cannot return their
@@ -43,6 +44,7 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # keep pixlet from flashing a 
 
 W, H = 64, 32
 MIN_CELL, MAX_CELL, DEFAULT_CELL = 3, 40, 10  # screen pixels per Tidbyt pixel
+MENU_LINGER_S = 3  # the menu disappears this long after the mouse leaves the window
 STATIC_MS = 15000  # how long a still image (Mona Lisa) stays up
 
 BAR_BG = "#11161c"
@@ -285,6 +287,7 @@ class Mirror:
         root.protocol("WM_DELETE_WINDOW", self.close)
 
         self.menu_shown = False
+        self.last_hover = 0
         self.show_in_taskbar()
         self.watch_pointer()
         self.poll()
@@ -330,7 +333,9 @@ class Mirror:
         px, py = self.root.winfo_pointerxy()
         x, y = self.root.winfo_rootx(), self.root.winfo_rooty()
         inside = x <= px < x + self.root.winfo_width() and y <= py < y + self.root.winfo_height()
-        want = inside or self.keep_menu or self.drag is not None
+        if inside or self.keep_menu:
+            self.last_hover = time.time()
+        want = time.time() - self.last_hover < MENU_LINGER_S  # stays a moment after the mouse leaves
         if want != self.menu_shown:
             self.menu_shown = want
             if want:
