@@ -4,6 +4,7 @@ Renders Tidbyt apps and pushes them to the device. Run by GitHub Actions
 
   python tools/cloud_push.py market [--hourly|--force]   MarketPulse + MarketPulse Stocks
   python tools/cloud_push.py weather            Weather Now, Weather Forecast, Pixel Museum, Pixel Aquarium
+  python tools/cloud_push.py movies             Now Playing (needs TMDB_API_KEY and Pillow)
 
 Environment:
   TIDBYT_API_TOKEN, TIDBYT_DEVICE_ID   (GitHub secrets; never stored in the repo)
@@ -154,6 +155,32 @@ def run_market(force, hourly):
     return ok
 
 
+def run_movies():
+    snap_path = os.environ.get("NP_SNAPSHOT", os.path.join(ROOT, ".cache", "now_playing.json"))
+    snap = None
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import movies_snapshot
+        snap = movies_snapshot.build(os.path.join(ROOT, ".cache", "imdb"))
+        if not snap["movies"]:
+            snap = None
+    except Exception as e:
+        log("movie fetch failed: %s" % e)
+    if snap:
+        os.makedirs(os.path.dirname(snap_path), exist_ok=True)
+        with open(snap_path, "w") as f:
+            json.dump(snap, f, separators=(",", ":"))
+        log("fetched %d movies" % len(snap["movies"]))
+    elif os.path.exists(snap_path):
+        with open(snap_path) as f:
+            snap = json.load(f)
+        log("using the last good movie list")
+    else:
+        return False
+    return render_and_push("apps/now_playing/now_playing.star", "nowplaying",
+                           {"snapshot": json.dumps(snap, separators=(",", ":"))})
+
+
 def run_weather():
     ok = True
     for star, iid in WEATHER_APPS:
@@ -168,6 +195,8 @@ def main():
         ok = run_market(force, "--hourly" in sys.argv)
     elif group == "weather":
         ok = run_weather()
+    elif group == "movies":
+        ok = run_movies()
     else:
         sys.exit(__doc__)
     sys.exit(0 if ok else 1)

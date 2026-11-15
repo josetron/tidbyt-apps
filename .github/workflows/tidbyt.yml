@@ -14,7 +14,7 @@ on:
       group:
         description: "Which apps to push now"
         type: choice
-        options: [market, weather, both]
+        options: [market, weather, movies, both]
         default: both
 
 permissions:
@@ -60,6 +60,36 @@ jobs:
         if: github.event.schedule == '33 * * * *'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tidbyt.yml/enable"
+
+  movies:
+    if: >-
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'both') ||
+      github.event.schedule == '33 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency: { group: movies, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pixlet
+      - run: pip install --quiet pillow
+      - name: Restore IMDb ratings file and last movie list
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache
+          key: movies-${{ github.run_id }}
+          restore-keys: movies-
+      - name: Fetch, render and push
+        env:
+          TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
+          TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python tools/cloud_push.py movies
+      - name: Save movie cache
+        if: always() && hashFiles('.cache/now_playing.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: movies-${{ github.run_id }}
 
   weather:
     if: >-

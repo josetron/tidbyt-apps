@@ -1,0 +1,8 @@
+---
+id: now-playing
+name: Now Playing
+summary: Movies in theaters now
+desc: Movies now playing in US theaters with poster, title, rating, runtime and IMDb score, two per showing. Uses the TMDB API (not endorsed or certified by TMDB) and IMDb's public ratings data.
+author: Tidbyt Dev
+fileName: now_playing.star
+packageName: nowplaying
