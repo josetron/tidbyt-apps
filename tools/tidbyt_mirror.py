@@ -39,12 +39,14 @@ a TMDB key in %USERPROFILE%\\.tidbyt\\tmdb_api_key.txt (Now Playing; without it,
 import json
 import os
 import queue
+import re
 import socket
 import subprocess
 import sys
 import threading
 import time
 import tkinter as tk
+from datetime import datetime
 import urllib.request
 from tkinter import ttk
 
@@ -254,6 +256,21 @@ def save_app_settings(data):
         json.dump(data, f, indent=1)
 
 
+def normalize_datetime(text):
+    """Apps want a full timestamp (2023-03-29T08:30:00-05:00). Accepts what people type instead:
+    2023-03-29, 3/29/2023, with an optional time such as 08:30 or 8:30 PM (local time)."""
+    text = text.strip()
+    if not text or re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", text):
+        return text
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %I:%M %p", "%Y-%m-%d",
+                "%m/%d/%Y %H:%M", "%m/%d/%Y %I:%M %p", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text.upper(), fmt).astimezone().isoformat(timespec="seconds")
+        except ValueError:
+            pass
+    return text
+
+
 def fetch_schema(star):
     """The app's settings fields. Pixlet only exposes them through its emulator, so this starts
     `pixlet serve` on a spare port, reads /api/v1/schema and stops it again."""
@@ -304,9 +321,12 @@ def render(iid, star, build):
             apps[iid]["note"], apps[iid]["error"] = note, ""
         log("%s: rendered" % iid)
     except Exception as e:  # keep the last good image and say why it is old
+        lines = [line.strip() for line in str(e).splitlines() if line.strip()]
         with lock:
-            apps[iid]["error"] = str(e)[:200]
+            apps[iid]["error"] = (lines[-1] if lines else "render failed")[:200]
         log("%s: %s" % (iid, e))
+    with lock:
+        apps[iid]["tries"] = apps[iid].get("tries", 0) + 1
 
 
 def refresh_device():
@@ -520,6 +540,7 @@ class Mirror:
         self.shown_version = 0
         self.settings_win = None
         self.reload_key = None
+        self.reload_tries = 0
         self.tick_job = None
         self.mask = None
         self.mask_cell = 0
@@ -920,10 +941,13 @@ class Mirror:
                 entry.insert(0, str(current))
                 entry.pack(anchor="w")
                 if kind == "datetime":
-                    ttk.Label(body, text="Format: 2023-01-15T08:30:00Z", foreground="#666666").pack(anchor="w")
-                elif kind == "color":
-                    ttk.Label(body, text="Format: #RRGGBB", foreground="#666666").pack(anchor="w")
-                getters[fid] = lambda entry=entry: entry.get().strip()
+                    ttk.Label(body, text="For example 2023-03-29, or 2023-03-29 08:30 with a time",
+                              foreground="#666666").pack(anchor="w")
+                    getters[fid] = lambda entry=entry: normalize_datetime(entry.get())
+                else:
+                    if kind == "color":
+                        ttk.Label(body, text="Format: #RRGGBB", foreground="#666666").pack(anchor="w")
+                    getters[fid] = lambda entry=entry: entry.get().strip()
             else:
                 ttk.Label(body, text="(This kind of setting needs the phone app; not available here.)",
                           foreground="#666666").pack(anchor="w")
@@ -939,6 +963,8 @@ class Mirror:
             except OSError as e:
                 log("settings not saved: %s" % e)
             due[key] = 0  # render this app again right away
+            with lock:
+                self.reload_tries = apps[key].get("tries", 0)
             self.reload_key = key
             closed()
 
@@ -974,10 +1000,10 @@ class Mirror:
             self.show(self.order[0])
         elif self.current is not None:
             with lock:
-                version = apps[self.current]["version"]
-            if version != self.shown_version and self.reload_key == self.current:
+                tries = apps[self.current].get("tries", 0)
+            if self.reload_key == self.current and tries != self.reload_tries:
                 self.reload_key = None
-                self.show(self.current)  # just re-rendered with new settings: show the result
+                self.show(self.current)  # just re-rendered with new settings: show the result (or the error)
         self.root.after(2000, self.poll)
 
     def step(self, direction):
@@ -1004,7 +1030,9 @@ class Mirror:
             a = dict(apps[iid])
         self.shown_version = a["version"]
         n = self.order.index(iid) + 1 if iid in self.order else 0
-        note = "last good image" if a["error"] else a["note"]
+        note = a["note"]
+        if a["error"]:  # e.g. a setting the app could not use; the picture is the last good one
+            note = "problem: " + a["error"][-70:]
         self.title.configure(text="%s   %d/%d%s" % (a["name"], n, len(self.order), "   (" + note + ")" if note else ""))
         if self.tick_job:
             self.root.after_cancel(self.tick_job)
