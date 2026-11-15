@@ -11,11 +11,17 @@ Using the window
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
 
+  python  tools/tidbyt_mirror.py --fetch-store   downloads the store apps installed on the device
+
 How it works: the Tidbyt API can list the installations on the device but cannot return their
-images, so this renders the apps from this repo with Pixlet, the same way tools/cloud_push.py
-does for the device, and plays them in rotation like the Gen 1 does. Apps from the Tidbyt
-store are not shown: there is nothing to render them from. Nothing is pushed to the device.
-Rendered images go to .cache/mirror/ (git-ignored).
+images, so this renders the apps with Pixlet and plays them in the device's order.
+  - The apps from this repo are rendered the same way tools/cloud_push.py does for the device.
+  - Store apps come from Tidbyt's open-source community repository (github.com/tidbyt/community),
+    kept in .cache/community/ by --fetch-store. They run with DEFAULT settings plus the location
+    below, because the API does not expose the settings chosen in the phone app. Apps that are
+    not open source (clock, news, photo, spotify...) or need an API key are left out.
+    The "Store" button in the menu turns them on and off.
+Nothing is pushed to the device. Rendered images go to .cache/mirror/ (git-ignored).
 
 Needs: pixlet on PATH, Python with tkinter and Pillow. Optional: the Tidbyt token in
 %USERPROFILE%\\.tidbyt\\api_token.txt (to show only apps that are installed on the device) and
@@ -41,6 +47,17 @@ DEVICE_ID = "urgently-principal-smashing-hippo-90b"
 LOCK_PORT = 8765  # only used to make sure one mirror runs at a time
 PIXLET = os.environ.get("PIXLET", "pixlet")
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # keep pixlet from flashing a console window
+
+COMMUNITY = os.path.join(ROOT, ".cache", "community")
+COMMUNITY_URL = "https://github.com/tidbyt/community.git"
+STORE_EVERY = 1800  # seconds between refreshes of a store app
+STORE_CONFIG = {    # passed to every store app; apps ignore what they don't use
+    "$tz": "America/Chicago",
+    "location": json.dumps({"lat": "30.19", "lng": "-98.09", "locality": "Dripping Springs", "timezone": "America/Chicago"}),
+}
+# Store apps that only show a "set your API key / not configured" card with default settings
+STORE_SKIP = {"air-quality", "avatars-in-pixels", "birdbyt", "last-fm", "multiple-images", "time-and-weather"}
+SHOW_MS = 15000  # the Tidbyt gives each app about this long
 
 W, H = 64, 32
 MIN_CELL, MAX_CELL, DEFAULT_CELL = 3, 40, 10  # screen pixels per Tidbyt pixel
@@ -123,8 +140,81 @@ APPS = [
 ]
 
 # Shared between the render thread (writes) and the window (reads)
-apps = {a[0]: {"id": a[0], "name": a[1], "version": 0, "note": "", "error": "", "on_device": True} for a in APPS}
+apps = {a[0]: {"id": a[0], "name": a[1], "version": 0, "note": "", "error": "", "on_device": True, "store": False}
+        for a in APPS}
+order = [a[0] for a in APPS]  # playing order: the device's own order once it is known
+jobs = {a[0]: (os.path.join(ROOT, "apps", a[2], a[2] + ".star"), a[3], a[4]) for a in APPS}  # id -> (star, config builder, every)
 lock = threading.Lock()
+
+
+# ---------------------------------------------------------------------------
+# Store apps (Tidbyt's community repository)
+# ---------------------------------------------------------------------------
+
+def store_dir(app_id):
+    return os.path.join(COMMUNITY, "apps", app_id.replace("-", ""))
+
+
+def store_star(app_id):
+    d = store_dir(app_id)
+    try:
+        stars = sorted(f for f in os.listdir(d) if f.endswith(".star"))
+    except OSError:
+        return None
+    return os.path.join(d, stars[0]) if stars else None
+
+
+def store_name(app_id):
+    try:
+        with open(os.path.join(store_dir(app_id), "manifest.yaml"), encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("name:"):
+                    return line[5:].strip().strip(chr(34) + chr(39))
+    except OSError:
+        pass
+    return app_id
+
+
+def store_config():
+    return dict(STORE_CONFIG), "default settings"
+
+
+def device_installations():
+    token = read_secret("api_token.txt")
+    if not token:
+        return None
+    req = urllib.request.Request(
+        "https://api.tidbyt.com/v0/devices/%s/installations" % DEVICE_ID,
+        headers={"Authorization": "Bearer " + token},
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r).get("installations", [])
+
+
+def fetch_store():
+    """Downloads (or updates) the community code of the store apps installed on the device."""
+    installs = device_installations()
+    if installs is None:
+        sys.exit("No Tidbyt token in %s" % os.path.join(HOME, "api_token.txt"))
+    ids = sorted({i["appID"] for i in installs if i.get("appID")})
+
+    def git(*args, cwd=COMMUNITY):
+        return subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True)
+
+    if not os.path.isdir(os.path.join(COMMUNITY, ".git")):
+        os.makedirs(os.path.dirname(COMMUNITY), exist_ok=True)
+        r = git("clone", "--depth", "1", "--filter=blob:none", "--sparse", COMMUNITY_URL, COMMUNITY, cwd=ROOT)
+        if r.returncode != 0:
+            sys.exit(r.stderr.strip())
+    else:
+        git("pull", "--depth", "1")
+    available = set(git("ls-tree", "--name-only", "HEAD", "apps/").stdout.replace("apps/", "").split())
+    wanted = [i for i in ids if i.replace("-", "") in available]
+    r = git("sparse-checkout", "set", "--no-cone", *["/apps/%s/" % i.replace("-", "") for i in wanted])
+    if r.returncode != 0:
+        sys.exit(r.stderr.strip())
+    print("%d store apps on the device, %d downloaded" % (len(ids), len(wanted)))
+    print("not open source:", ", ".join(i for i in ids if i not in wanted) or "-")
 
 
 # ---------------------------------------------------------------------------
@@ -132,19 +222,21 @@ lock = threading.Lock()
 # ---------------------------------------------------------------------------
 
 def gif_path(iid):
-    return os.path.join(OUT, iid + ".gif")
+    return os.path.join(OUT, iid.replace(":", "_") + ".gif")
 
 
-def render(iid, folder, build):
+def render(iid, star, build):
     # GIF, not WebP: Pillow misreads the frame durations of Pixlet's WebP files
-    star = os.path.join(ROOT, "apps", folder, folder + ".star")
-    tmp = os.path.join(OUT, iid + ".tmp.gif")
+    tmp = gif_path(iid)[:-4] + ".tmp.gif"
     try:
         config, note = build()
         args = [PIXLET, "render", star] + ["%s=%s" % kv for kv in config.items()] + ["--gif", "-o", tmp]
         r = subprocess.run(args, capture_output=True, text=True, timeout=180, creationflags=NO_WINDOW)
         if r.returncode != 0 or not os.path.exists(tmp):
             raise RuntimeError((r.stderr or r.stdout).strip()[-200:] or "pixlet render failed")
+        if os.path.getsize(tmp) < 20:  # the app chose to show nothing right now
+            os.remove(tmp)
+            raise RuntimeError("nothing to show")
         os.replace(tmp, gif_path(iid))
         with lock:
             apps[iid]["version"] += 1
@@ -157,36 +249,54 @@ def render(iid, folder, build):
 
 
 def refresh_device():
-    """Which installations the device has (ids only: the API has no images to offer)."""
-    token = read_secret("api_token.txt")
-    if not token:
-        return
+    """Reads the device's installation list: which of our apps are on it, in which order, and
+    which store apps to add (ids only: the API has no images or settings to offer)."""
     try:
-        req = urllib.request.Request(
-            "https://api.tidbyt.com/v0/devices/%s/installations" % DEVICE_ID,
-            headers={"Authorization": "Bearer " + token},
-        )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            ids = {i["id"] for i in json.load(r).get("installations", [])}
+        installs = device_installations()
     except Exception as e:
         log("device list failed: %s" % e)
         return
+    if installs is None:
+        return
+    new_order, seen = [], set()
     with lock:
-        for iid, a in apps.items():
-            a["on_device"] = iid in ids
+        for inst in installs:
+            app_id = inst.get("appID")
+            key = "store:" + app_id if app_id else inst["id"]
+            if key in seen:
+                continue  # the same store app installed twice plays once here
+            seen.add(key)
+            if app_id:
+                star = None if app_id in STORE_SKIP else store_star(app_id)
+                if not star:
+                    continue
+                if key not in apps:
+                    apps[key] = {"id": key, "name": store_name(app_id), "version": 0, "note": "", "error": "",
+                                 "on_device": True, "store": True}
+                    jobs[key] = (star, store_config, STORE_EVERY)
+            elif key not in apps:
+                continue  # pushed by something else: no source to render
+            new_order.append(key)
+        for key, a in apps.items():
+            a["on_device"] = key in seen
+        order[:] = new_order + [k for k in apps if k not in new_order]
 
 
 def worker():
-    due = {a[0]: 0 for a in APPS}
+    due = {}
     device_due = 0
     while True:
         if time.time() >= device_due:
             refresh_device()
             device_due = time.time() + 1800
-        for iid, _, folder, build, every in APPS:  # one at a time: parallel renders time out
-            if time.time() >= due[iid] and apps[iid]["on_device"]:
-                render(iid, folder, build)
-                due[iid] = time.time() + every
+        with lock:
+            todo = [k for k in order if apps[k]["on_device"]]
+        todo.sort(key=lambda k: apps[k]["store"])  # our own apps first, so the window starts quickly
+        for key in todo:  # one at a time: parallel renders time out
+            if time.time() >= due.get(key, 0):
+                star, build, every = jobs[key]
+                render(key, star, build)
+                due[key] = time.time() + every
         time.sleep(5)
 
 
@@ -226,11 +336,13 @@ class Mirror:
         s = self.load_settings()
         self.cell = min(MAX_CELL, max(MIN_CELL, int(s.get("cell", DEFAULT_CELL))))
         self.on_top = bool(s.get("on_top", False))
+        self.store = bool(s.get("store", True))
         self.paused = False
         self.order = []      # ids that can be shown right now
         self.current = None  # id being shown
         self.frames = []
         self.frame_i = 0
+        self.show_until = 0
         self.tick_job = None
         self.mask = None
         self.mask_cell = 0
@@ -267,6 +379,7 @@ class Mirror:
         self.pause_btn = button("Pause", self.toggle_pause)
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
+        self.store_btn = button("", self.toggle_store, side="right")
         self.title = tk.Label(bar, text="", bg=BAR_BG, fg=BAR_FG, font=("Segoe UI", 9), anchor="w")
         self.title.pack(side="left", fill="x", expand=True, padx=6)
         self.update_top_label()
@@ -302,7 +415,8 @@ class Mirror:
             return {}
 
     def save_settings(self):
-        data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top}
+        data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top,
+                "store": self.store}
         try:
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -378,6 +492,15 @@ class Mirror:
 
     def update_top_label(self):
         self.top_btn.configure(text="On top ✓" if self.on_top else "On top", fg=BAR_FG if self.on_top else BAR_DIM)
+        self.store_btn.configure(text="Store ✓" if self.store else "Store", fg=BAR_FG if self.store else BAR_DIM)
+
+    def toggle_store(self):
+        self.store = not self.store
+        self.update_top_label()
+        self.save_settings()
+        self.poll_once()
+        if self.current not in self.order:
+            self.step(1)
 
     def toggle_pause(self):
         self.paused = not self.paused
@@ -389,10 +512,14 @@ class Mirror:
 
     # -- playback ----------------------------------------------------------
 
+    def poll_once(self):
+        with lock:
+            self.order = [k for k in order if apps[k]["version"] > 0 and apps[k]["on_device"]
+                          and (self.store or not apps[k]["store"])]
+
     def poll(self):
         """Pick up newly rendered apps."""
-        with lock:
-            self.order = [a[0] for a in APPS if apps[a[0]]["version"] > 0 and apps[a[0]]["on_device"]]
+        self.poll_once()
         if self.current is None and self.order:
             self.show(self.order[0])
         self.root.after(2000, self.poll)
@@ -400,7 +527,12 @@ class Mirror:
     def step(self, direction):
         if not self.order:
             return
-        i = self.order.index(self.current) if self.current in self.order else -1
+        if self.current in self.order:
+            i = self.order.index(self.current)
+        else:  # the current app left the list (store apps switched off): carry on from where it was
+            with lock:
+                before = order[:order.index(self.current)] if self.current in order else []
+            i = len([k for k in self.order if k in before]) - (1 if direction > 0 else 0)
         self.show(self.order[(i + direction) % len(self.order)])
 
     def show(self, iid):
@@ -410,6 +542,8 @@ class Mirror:
             log("%s: cannot play: %s" % (iid, e))
             frames = self.frames
         self.current, self.frames, self.frame_i = iid, frames, 0
+        total = sum(ms for _, ms in frames)
+        self.show_until = time.time() + min(30000, max(total, SHOW_MS)) / 1000.0  # short animations loop
         with lock:
             a = dict(apps[iid])
         n = self.order.index(iid) + 1 if iid in self.order else 0
@@ -422,9 +556,9 @@ class Mirror:
     def tick(self):
         if not self.frames:
             return
-        if self.frame_i >= len(self.frames):  # the animation has played once, like on the device
-            if self.paused:
-                self.frame_i = 0
+        if self.frame_i >= len(self.frames):
+            if self.paused or time.time() < self.show_until - 0.3:
+                self.frame_i = 0  # short animations loop until the app's time is up, like on the device
             else:
                 self.tick_job = None
                 self.step(1)
@@ -449,6 +583,9 @@ class Mirror:
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    if "--fetch-store" in sys.argv:
+        fetch_store()
+        return
     if sys.stdout is None:  # started with pythonw (no console): log to a file instead
         sys.stdout = sys.stderr = open(os.path.join(OUT, "mirror.log"), "w", encoding="utf-8")
     guard = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
