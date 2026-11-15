@@ -518,6 +518,26 @@ def dot_mask(cell):
     return mask.convert("RGB")
 
 
+OFF_BELOW = 28              # a pixel whose brightest channel is under this is an unlit LED
+OFF_COLOR = (46, 48, 52)    # what an unlit LED looks like on the real panel: a faint grey dot
+OFF_SIZE = 0.5              # its diameter, as a share of the pixel pitch (lit LEDs bloom larger)
+
+
+def off_layer(cell):
+    """The panel with every LED off: small faint grey dots on black. Shown only where a pixel
+    is unlit, so lit dots keep their exact colour and brightness."""
+    big = Image.new("L", (cell * 4, cell * 4), 0)
+    edge = cell * 4 * (1 - OFF_SIZE) / 2
+    ImageDraw.Draw(big).ellipse((edge, edge, cell * 4 - 1 - edge, cell * 4 - 1 - edge), fill=255)
+    tile = big.resize((cell, cell), Image.LANCZOS)
+    mask = Image.new("L", (W * cell, H * cell))
+    for y in range(H):
+        for x in range(W):
+            mask.paste(tile, (x * cell, y * cell))
+    layer = Image.new("RGB", mask.size, OFF_COLOR)
+    return ImageChops.multiply(layer, mask.convert("RGB"))
+
+
 class Mirror:
     def __init__(self, keep_menu):
         self.keep_menu = keep_menu
@@ -1060,8 +1080,14 @@ class Mirror:
         big = frame.resize((W * self.cell, H * self.cell), Image.NEAREST)
         if self.cell >= 4:
             if self.mask_cell != self.cell:
-                self.mask, self.mask_cell = dot_mask(self.cell), self.cell
+                self.mask, self.off, self.mask_cell = dot_mask(self.cell), off_layer(self.cell), self.cell
             big = ImageChops.multiply(big, self.mask)
+
+            # unlit LEDs show as faint grey dots, like the real panel; lit ones are left untouched
+            r, g, b = frame.split()
+            brightest = ImageChops.lighter(ImageChops.lighter(r, g), b)
+            unlit = brightest.point(lambda v: 255 if v < OFF_BELOW else 0).resize(big.size, Image.NEAREST)
+            big = Image.composite(self.off, big, unlit)
         self.photo = ImageTk.PhotoImage(big)
         self.screen.configure(image=self.photo, text="")
 
