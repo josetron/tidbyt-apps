@@ -20,7 +20,6 @@ WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s" +
     "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day," +
     "weather_code,wind_speed_10m,wind_direction_10m,uv_index" +
-    "&hourly=temperature_2m,precipitation_probability" +
     "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
     "&temperature_unit=%s&wind_speed_unit=%s&timezone=auto&forecast_days=4"
 )
@@ -32,8 +31,10 @@ DELAY_MS = 80
 ICON_FRAMES = 12  # every icon animation loops cleanly in 12 frames
 
 # Pixlet/Tidbyt cap an app's animation at 15s. Worst case (daytime, 7 ticker
-# lines): 7 * 25 = 175 frames * 80ms = 14.0s, i.e. 2 seconds per detail.
-INFO_FRAMES = 25  # how long each line of the rotating detail ticker shows
+# lines): 7 * 24 = 168 frames * 80ms = 13.4s, i.e. 1.9 seconds per detail.
+# 24 is a multiple of ICON_FRAMES, so the icon is back at its first frame when
+# the app loops (no jump).
+INFO_FRAMES = 24  # how long each line of the rotating detail ticker shows
 
 SMALL = "tom-thumb"
 
@@ -64,8 +65,7 @@ BOLT = "#ffe14d"
 # Gen 1 Tidbyt LEDs barely show very dark colors, so "dim" UI colors stay
 # above roughly #303030 to remain visible.
 LABEL = "#7d8794"
-DIM = "#56606c"
-DIVIDER = "#2c3440"
+DIVIDER = "#343c48"
 WHITE = "#e8e8e8"
 HI_COLOR = "#ff9d4a"
 LO_COLOR = "#5fb4ff"
@@ -362,7 +362,6 @@ def icon_animation(kind, is_day, size):
 UP_ARROW = [".#.", "###"]
 DOWN_ARROW = ["###", ".#."]
 DEGREE = [".#.", "#.#", ".#."]
-DROP = [".#.", "###", "###", ".#."]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -398,20 +397,9 @@ def uv_color(uv):
         return "#ff9a3c"
     return "#ff4a4a"
 
-def hour_label(iso):
-    h = int(iso[11:13])
-    suffix = "A" if h < 12 else "P"
-    h12 = h % 12
-    if h12 == 0:
-        h12 = 12
-    return "%d%s" % (h12, suffix)
-
 def hold(widget, frames):
     """Show a static widget for a fixed number of frames."""
     return render.Animation(children = [widget] * frames)
-
-def spacer_frames(frames):
-    return render.Animation(children = [render.Box(width = 1, height = 1)] * frames)
 
 def label_value(label, value, color):
     return render.Row(

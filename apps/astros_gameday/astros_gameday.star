@@ -121,6 +121,11 @@ def game_time(game):
 def state(game):
     return game.get("status", {}).get("abstractGameState", "Preview")
 
+def called_off(game):
+    # MLB reports a postponed or cancelled game as "Final" with no score
+    detail = game.get("status", {}).get("detailedState", "")
+    return detail.startswith("Postponed") or detail.startswith("Cancelled")
+
 # ---------------------------------------------------------------------------
 # Pieces
 # ---------------------------------------------------------------------------
@@ -156,6 +161,7 @@ def header(title, tag = None, tag_color = WHITE):
     return children
 
 def team_box(abbr, width = 19, height = 13):
+    # 19 px is roomy; 17 px still fits three letters when space is tight
     bg, fg = TEAM_COLORS.get(abbr, (DIM, WHITE))
     return render.Box(width = width, height = height, color = bg, child = render.Text(abbr, font = "5x8", color = fg))
 
@@ -174,7 +180,7 @@ def kind_tag(game):
     if kind == "S":
         return "SPRING"
     if kind in ("F", "D", "L", "W"):
-        return {"F": "WILD CARD", "D": "ALDS", "L": "ALCS", "W": "WORLD SERIES"}[kind]
+        return {"F": "WC", "D": "ALDS", "L": "ALCS", "W": "WS"}[kind]  # short enough for the matchup row
     return ""
 
 # ---------------------------------------------------------------------------
@@ -201,7 +207,14 @@ def when_label(start, now):
         return ("TONIGHT " if start.hour >= 17 else "TODAY ") + clock
     if day == tomorrow:
         return "TOMORROW " + clock if len(clock) <= 6 else "TMRW " + clock
-    return start.format("Mon 1/2 ").upper() + clock
+
+    # 15 characters fit on the line: shorten "12:05PM" to "12:05P", then drop the weekday
+    label = start.format("Mon 1/2 ").upper() + clock
+    if len(label) > 15:
+        label = start.format("Mon 1/2 ").upper() + clock[:-1]
+    if len(label) > 15:
+        label = start.format("1/2 ") + clock
+    return label
 
 def next_frames(game, now, count):
     _, theirs, home = side_info(game)
@@ -210,8 +223,11 @@ def next_frames(game, now, count):
     status = game.get("status", {}).get("detailedState", "")
     tag = kind_tag(game)
     lines = [when_label(start, now), countdown(start, now)]
-    if status in ("Postponed", "Cancelled", "Suspended"):
-        lines = [status.upper(), when_label(start, now)]
+    if called_off(game):
+        # the second line names the day it was due, not a time that no longer applies
+        lines = [status.split(":")[0].upper()[:15], start.format("Mon 1/2").upper()]
+    elif status.startswith("Suspended"):
+        lines = ["SUSPENDED", when_label(start, now)]
     elif game.get("status", {}).get("startTimeTBD"):
         lines = [start.format("Mon 1/2").upper() + " TBD", countdown(start, now)]
 
@@ -244,25 +260,40 @@ def final_frames(game, count):
     if status.startswith("Completed Early"):
         title = "FINAL*"
 
+    # two double-digit scores don't fit side by side at full size: narrower boxes, smaller digits
+    tight = us >= 10 and them >= 10
+    box_w = 17 if tight else 19
+
     def score_text(n, bright):
-        return render.Text(str(n), font = "6x13", color = WHITE if bright else GREY)
+        return render.Text(str(n), font = "5x8" if tight else "6x13", color = WHITE if bright else GREY)
 
     frames = []
     for f in range(count):
         x = slide(f, 0, 6, 64)
         frames.append(render.Stack(children = [background()] + header(title, " " + tag, color) + [
             render.Padding(pad = (1 - x, 16, 0, 0), child = render.Row(cross_align = "center", children = [
-                team_box(TEAM),
+                team_box(TEAM, width = box_w),
                 render.Box(width = 2, height = 1),
                 score_text(us, us >= them),
             ])),
             render.Padding(pad = (x, 16, 1, 0), child = render.Row(expanded = True, main_align = "end", cross_align = "center", children = [
                 score_text(them, them >= us),
                 render.Box(width = 2, height = 1),
-                team_box(opp),
+                team_box(opp, width = box_w),
             ])),
         ]))
     return frames
+
+def live_word(game):
+    # shown instead of the inning before the first pitch or during a delay; 6 characters fit
+    detail = game.get("status", {}).get("detailedState", "").upper()
+    if detail.startswith("DELAY"):
+        return "DELAY"
+    if detail.startswith("WARMUP"):
+        return "WARMUP"
+    if detail.startswith("SUSPEND"):
+        return "SUSP"
+    return "LIVE"
 
 def base(on, blink):
     color = (ORANGE if blink else ORANGE_LIGHT) if on else DIM
@@ -275,7 +306,7 @@ def live_frames(game, count):
     offense = ls.get("offense", {})
     inning = ls.get("currentInning")
     state_word = {"Top": "TOP", "Middle": "MID", "Bottom": "BOT", "End": "END"}.get(ls.get("inningState", ""), "")
-    label = "%s %d" % (state_word, inning) if inning else game.get("status", {}).get("detailedState", "LIVE").upper()[:7]
+    label = "%s %d" % (state_word, inning) if inning else live_word(game)
     outs = ls.get("outs", 0) if state_word in ("TOP", "BOT") else 0
     show_bases = state_word in ("TOP", "BOT")
 
@@ -325,7 +356,7 @@ def main(config):
     if near == None:
         return message("MLB DATA UNAVAILABLE")
 
-    played = [g for g in near if g.get("linescore") and state(g) != "Preview"]
+    played = [g for g in near if g.get("linescore") and state(g) != "Preview" and not called_off(g)]
     if config.str("demo") == "live" and played:
         # preview only: draw a finished game as if it were the top of the 7th
         g = played[0]
@@ -338,12 +369,12 @@ def main(config):
 
     recent = None
     for g in near:
-        if state(g) == "Final" and now.unix - game_time(g).unix < (FINAL_SHOW_HOURS + 4) * 3600 and game_time(g).unix <= now.unix:
+        if state(g) == "Final" and not called_off(g) and now.unix - game_time(g).unix < (FINAL_SHOW_HOURS + 4) * 3600 and game_time(g).unix <= now.unix:
             recent = g
 
     upcoming = None
     for g in near:
-        if state(g) == "Preview" and game_time(g).unix > now.unix - 3 * 3600:
+        if (state(g) == "Preview" or called_off(g)) and game_time(g).unix > now.unix - 3 * 3600:
             upcoming = g
             break
     if not upcoming and not complete:

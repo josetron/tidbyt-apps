@@ -148,6 +148,21 @@ def clean(text):
         text = text.replace(a, b)
     return " ".join(text.strip().split())
 
+def parse_date(text):
+    # RSS dates look like "Mon, 02 Nov 2026 15:04:05 GMT" (or end in "+0000"). Starlark can't
+    # catch a failed parse, so anything that isn't that shape is skipped instead of parsed.
+    parts = text.strip().split(" ")
+    if len(parts) != 6 or not parts[1].isdigit() or not parts[3].isdigit() or len(parts[4].split(":")) != 3:
+        return None
+    if not parts[0].endswith(",") or len(parts[0]) != 4 or len(parts[2]) != 3 or len(parts[3]) != 4:
+        return None
+    zone = parts[5]
+    numeric = zone.startswith("+") or zone.startswith("-")
+    if (numeric and (len(zone) != 5 or not zone[1:].isdigit())) or (not numeric and not zone.isalpha()):
+        return None
+    day = "02" if len(parts[1]) == 2 else "2"
+    return time.parse_time(" ".join(parts), format = "Mon, %s Jan 2006 15:04:05 %s" % (day, "-0700" if numeric else "MST"))
+
 def headlines(now):
     rep = http.get(FEED_URL, headers = HEADERS, ttl_seconds = CACHE_TTL)
     if rep.status_code != 200:
@@ -162,7 +177,7 @@ def headlines(now):
             continue
         when = None
         if i < len(dates):
-            when = time.parse_time(dates[i].strip(), format = "Mon, 02 Jan 2006 15:04:05 MST")
+            when = parse_date(dates[i])
         if when and now.unix - when.unix > MAX_AGE_DAYS * 86400:
             continue
         items.append({"title": title, "when": when})
@@ -231,7 +246,11 @@ def header(when, now):
 
 def headline_frames(title, when, now):
     lines = wrap(title, LINE_CHARS)
-    pages = [lines[i:i + PAGE_LINES] for i in range(0, len(lines), PAGE_LINES)][:5]
+    max_lines = 5 * PAGE_LINES
+    if len(lines) > max_lines:  # too long to read in 15 s: cut it and say so
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1][:LINE_CHARS - 2].rstrip(" ,;:-") + ".."
+    pages = [lines[i:i + PAGE_LINES] for i in range(0, len(lines), PAGE_LINES)]
     hot = highlight_word(title)
     page_widgets = [
         render.Column(children = [line_widget(line, hot) for line in page] + [render.Box(width = 1, height = 1)])

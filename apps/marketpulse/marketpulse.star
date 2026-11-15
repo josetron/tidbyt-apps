@@ -147,6 +147,14 @@ def market_status(q, now):
             return label
     return "CLOSED"
 
+def session_hours(now):
+    # Weekdays 04:00-20:00 New York time (pre, regular and post market). A saved snapshot
+    # carries the trading hours of the day it was fetched, so on a later day it reads as
+    # CLOSED; this check still lets old data be flagged STALE.
+    t = time.from_timestamp(now).in_location(NY)
+    mins = t.hour * 60 + t.minute
+    return t.format("Mon") not in ("Sat", "Sun") and mins >= 240 and mins < 1200
+
 # ---------------------------------------------------------------------------
 # Widgets
 # ---------------------------------------------------------------------------
@@ -257,13 +265,15 @@ def message(text):
 def main(config):
     symbols = [e["symbol"] for e in ETFS]
     data = load_data(config, symbols)
-    if not data or "SPY" not in data.get("quotes", {}):
+
+    # keep only complete quotes (a live fetch can return a symbol without a price)
+    quotes = {s: q for s, q in (data or {}).get("quotes", {}).items() if q.get("price") and q.get("prev")}
+    if "SPY" not in quotes:
         return message("MarketPulse: no market data")
 
-    quotes = data["quotes"]
     now = time.now().unix
     status = market_status(quotes["SPY"], now)
-    stale = status != "CLOSED" and now - int(data["fetched_at"]) > STALE_AFTER
+    stale = now - int(data["fetched_at"]) > STALE_AFTER and (status != "CLOSED" or session_hours(now))
 
     if config.str("demo_status"):
         status = config.str("demo_status").upper()

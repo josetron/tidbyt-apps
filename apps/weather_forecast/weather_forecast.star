@@ -19,8 +19,7 @@ DEFAULT_UNITS = "imperial"
 ZIP_URL = "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&countryCode=US"
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s" +
-    "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day," +
-    "weather_code,wind_speed_10m,wind_direction_10m,uv_index" +
+    "&current=temperature_2m" +
     "&hourly=temperature_2m,precipitation_probability" +
     "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
     "&temperature_unit=%s&wind_speed_unit=%s&timezone=auto&forecast_days=4"
@@ -69,7 +68,7 @@ BOLT = "#ffe14d"
 # above roughly #303030 to remain visible.
 LABEL = "#7d8794"
 DIM = "#56606c"
-DIVIDER = "#2c3440"
+DIVIDER = "#343c48"
 WHITE = "#e8e8e8"
 HI_COLOR = "#ff9d4a"
 LO_COLOR = "#5fb4ff"
@@ -78,48 +77,6 @@ RAIN_TEXT = "#6fb8ff"
 # ---------------------------------------------------------------------------
 # Weather codes (WMO) -> icon kind + label
 # ---------------------------------------------------------------------------
-
-CODE_LABELS = {
-    0: "Clear",
-    1: "Mostly Clear",
-    2: "Partly Cloudy",
-    3: "Overcast",
-    45: "Fog",
-    48: "Icy Fog",
-    51: "Lt Drizzle",
-    53: "Drizzle",
-    55: "Hvy Drizzle",
-    56: "Frz Drizzle",
-    57: "Frz Drizzle",
-    61: "Light Rain",
-    63: "Rain",
-    65: "Heavy Rain",
-    66: "Freezing Rain",
-    67: "Freezing Rain",
-    71: "Light Snow",
-    73: "Snow",
-    75: "Heavy Snow",
-    77: "Snow Grains",
-    80: "Showers",
-    81: "Showers",
-    82: "Hvy Showers",
-    85: "Snow Showers",
-    86: "Snow Showers",
-    95: "T-Storms",
-    96: "T-Storm Hail",
-    99: "T-Storm Hail",
-}
-
-KIND_COLORS = {
-    "clear": SUN_CORE,
-    "partly": "#ffe08a",
-    "cloudy": CLOUD,
-    "fog": FOG,
-    "drizzle": DRIZZLE,
-    "rain": RAIN,
-    "snow": SNOW,
-    "storm": BOLT,
-}
 
 def code_kind(code):
     if code == 0:
@@ -139,11 +96,6 @@ def code_kind(code):
     if code in (95, 96, 99):
         return "storm"
     return "cloudy"
-
-def code_label(code, is_day):
-    if code == 0 and is_day:
-        return "Sunny"
-    return CODE_LABELS.get(code, "Unknown")
 
 # ---------------------------------------------------------------------------
 # Pixel-art icon engine
@@ -363,9 +315,6 @@ def icon_animation(kind, is_day, size):
     return render.Animation(children = frames)
 
 # Little UI glyphs
-UP_ARROW = [".#.", "###"]
-DOWN_ARROW = ["###", ".#."]
-DEGREE = [".#.", "#.#", ".#."]
 DROP = [".#.", "###", "###", ".#."]
 
 # ---------------------------------------------------------------------------
@@ -389,19 +338,6 @@ def temp_color(t, metric):
         return "#ff9a3c"
     return "#ff5a3c"
 
-def compass(deg):
-    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
-    return dirs[iround(deg / 45.0) % 8]
-
-def uv_color(uv):
-    if uv < 3:
-        return "#7fe37f"
-    if uv < 6:
-        return "#ffe14d"
-    if uv < 8:
-        return "#ff9a3c"
-    return "#ff4a4a"
-
 def hour_label(iso):
     h = int(iso[11:13])
     suffix = "A" if h < 12 else "P"
@@ -416,14 +352,6 @@ def hold(widget, frames):
 
 def spacer_frames(frames):
     return render.Animation(children = [render.Box(width = 1, height = 1)] * frames)
-
-def label_value(label, value, color):
-    return render.Row(
-        children = [
-            render.Text(label + " ", font = SMALL, color = LABEL),
-            render.Text(value, font = SMALL, color = color),
-        ],
-    )
 
 def error_screen(message):
     return render.Root(
@@ -475,6 +403,12 @@ def forecast_column(wx, i, metric):
     lo = iround(daily["temperature_2m_min"][i])
     pop = iround(daily["precipitation_probability_max"][i] or 0)
 
+    # "100/78" is too wide for the 21 px column, so 3-digit days get a 1 px gap instead of the
+    # slash (the two numbers already differ in colour)
+    separator = render.Text("/", font = SMALL, color = DIM)
+    if len("%d%d" % (hi, lo)) > 4:
+        separator = render.Box(width = 1, height = 1)
+
     return render.Box(
         width = 21,
         height = 32,
@@ -485,7 +419,7 @@ def forecast_column(wx, i, metric):
                 render.Padding(pad = (0, 1, 0, 1), child = icon_animation(code_kind(code), True, 12)),
                 render.Row(children = [
                     render.Text("%d" % hi, font = SMALL, color = temp_color(hi, metric)),
-                    render.Text("/", font = SMALL, color = DIM),
+                    separator,
                     render.Text("%d" % lo, font = SMALL, color = temp_color(lo, metric)),
                 ]),
                 render.Row(cross_align = "center", children = [

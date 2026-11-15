@@ -283,6 +283,14 @@ def market_status(q, now):
             return label
     return "CLOSED"
 
+def session_hours(now):
+    # Weekdays 04:00-20:00 New York time (pre, regular and post market). A saved snapshot
+    # carries the trading hours of the day it was fetched, so on a later day it reads as
+    # CLOSED; this check still lets old data be flagged STALE.
+    t = time.from_timestamp(now).in_location(NY)
+    mins = t.hour * 60 + t.minute
+    return t.format("Mon") not in ("Sat", "Sun") and mins >= 240 and mins < 1200
+
 # ---------------------------------------------------------------------------
 # Widgets
 # ---------------------------------------------------------------------------
@@ -389,7 +397,7 @@ def main(config):
 
     now = time.now().unix
     status = market_status(quotes[shown[0]], now)
-    stale = status != "CLOSED" and now - int(data["fetched_at"]) > STALE_AFTER
+    stale = now - int(data["fetched_at"]) > STALE_AFTER and (status != "CLOSED" or session_hours(now))
 
     if config.str("demo_status"):
         status = config.str("demo_status").upper()

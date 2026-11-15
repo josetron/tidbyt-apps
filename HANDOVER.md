@@ -25,7 +25,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | Folder | Installation ID on device | Auto-refreshed | What it does |
 |---|---|---|---|
 | `apps/hello_world` | (not pushed) | no | Starter app, a greeting with a `who` setting |
-| `apps/weather_now` | `weathernow` | yes | Current conditions for ZIP 78620 (Dripping Springs, TX): animated pixel-art icon, big temp, hi/lo, rotating detail line (city, condition, feels-like, humidity, wind, rain %, UV) at 2 s each |
+| `apps/weather_now` | `weathernow` | yes | Current conditions for ZIP 78620 (Dripping Springs, TX): animated pixel-art icon, big temp, hi/lo, rotating detail line (city, condition, feels-like, humidity, wind, rain %, UV) at 1.9 s each (24 frames, a multiple of the 12-frame icon loop, so the icon doesn't jump when the app restarts) |
 | `apps/weather_forecast` | `weatherforecast` | yes | Location title card → 3-day forecast with mini animated icons → 24 h temperature/rain chart that draws itself |
 | `apps/mona_lisa` | `monalisa` | no (static) | The user's pixel-art Mona Lisa mockup converted to 64×32 (`mockup.webp` → `mona_lisa_64x32.png`) |
 | `apps/pixel_museum` | `pixelmuseum` | yes | Gallery of 10 public-domain paintings as pixel art; 3 per showing (4 s each), transitions fade / slide / wipe / pixel-dissolve / random; each refresh moves to the next 3 |
@@ -134,6 +134,8 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
 - Strings aren't iterable: use `s.elems()`.
 - `%` formatting has **no width or zero-pad** (`%02x` fails). Build hex by hand (see `hex2()` in pixel_museum).
 - Adjacent string literals don't concatenate. Join them with `+`.
+- **MLB Stats API:** a postponed or cancelled game comes back as `abstractGameState: Final` with
+  `detailedState: Postponed` and no score. Check `detailedState` before treating a game as finished.
 - No `while`, no `try/except`. An `http.get` timeout **crashes** the app (it can't be caught);
   `push_app.ps1` retries for this reason. Open-Meteo occasionally takes several seconds.
 - Useful facts found by testing: `render.Box` **clips** its child (centred); **negative
@@ -148,7 +150,8 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
 - **The emulator only passes schema fields** from its URL/form to the app, so it can't feed large data (use an
   embedded preview copy like `tools/make_preview.py`).
 - `pixlet lint` flags formatting: run `pixlet format <file>` first. `pixlet check` needs
-  `manifest.yaml`, and its `summary` must start with a capital letter (max 27 chars).
+  `manifest.yaml`, and its `summary` must start with a capital letter (max 27 chars). The manifest `name`
+  must be under 17 characters (which is why the stocks app is "MarketPulse 6").
 
 **Claude Code environment**
 - Claude's sandboxed shells **redirect writes to `%LOCALAPPDATA%`** into a private copy that
