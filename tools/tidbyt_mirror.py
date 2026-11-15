@@ -11,6 +11,9 @@ Using the window
     keep on top, close. It disappears
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
+  - "Settings" in the menu opens the options of the app on screen (the same fields the phone
+    app's Edit screen has). They are saved in %USERPROFILE%\\.tidbyt\\mirror_settings.json, outside
+    this (public) repo because they can be personal, and only affect the mirror, not the device.
 
   python  tools/tidbyt_mirror.py --fetch-store   downloads the store apps installed on the device
 
@@ -38,6 +41,7 @@ import threading
 import time
 import tkinter as tk
 import urllib.request
+from tkinter import ttk
 
 from PIL import Image, ImageChops, ImageDraw, ImageTk
 
@@ -222,6 +226,51 @@ def fetch_store():
 # Rendering (background thread)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Per-app settings (the mirror's own; the device's are not readable)
+# ---------------------------------------------------------------------------
+
+SETTINGS_FILE = os.path.join(HOME, "mirror_settings.json")
+due = {}  # app id -> time of its next render; the settings form resets it to refresh an app now
+
+
+def load_app_settings():
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_app_settings(data):
+    os.makedirs(HOME, exist_ok=True)
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=1)
+
+
+def fetch_schema(star):
+    """The app's settings fields. Pixlet only exposes them through its emulator, so this starts
+    `pixlet serve` on a spare port, reads /api/v1/schema and stops it again."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    proc = subprocess.Popen([PIXLET, "serve", "--port", str(port), star], stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    try:
+        for _ in range(40):
+            time.sleep(0.25)
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:%d/api/v1/schema" % port, timeout=5) as r:
+                    return json.load(r).get("schema") or []
+            except Exception:
+                if proc.poll() is not None:
+                    break
+        raise RuntimeError("could not read the app's settings")
+    finally:
+        proc.kill()
+
+
 def gif_path(iid):
     return os.path.join(OUT, iid.replace(":", "_") + ".gif")
 
@@ -231,6 +280,12 @@ def render(iid, star, build):
     tmp = gif_path(iid)[:-4] + ".tmp.gif"
     try:
         config, note = build()
+        mine = load_app_settings().get(iid, {})
+        for k, v in mine.items():
+            if k != "snapshot":
+                config[k] = v
+        if mine and note == "default settings":
+            note = ""
         args = [PIXLET, "render", star] + ["%s=%s" % kv for kv in config.items()] + ["--gif", "-o", tmp]
         r = subprocess.run(args, capture_output=True, text=True, timeout=180, creationflags=NO_WINDOW)
         if r.returncode != 0 or not os.path.exists(tmp):
@@ -284,7 +339,6 @@ def refresh_device():
 
 
 def worker():
-    due = {}
     device_due = 0
     while True:
         if time.time() >= device_due:
@@ -345,6 +399,9 @@ class Mirror:
         self.frames = []
         self.frame_i = 0
         self.show_until = 0
+        self.shown_version = 0
+        self.settings_win = None
+        self.reload_key = None
         self.tick_job = None
         self.mask = None
         self.mask_cell = 0
@@ -382,6 +439,7 @@ class Mirror:
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
         self.store_btn = button("", self.toggle_store, side="right")
+        button("Settings", self.open_settings, side="right")
 
         # transparency slider: 20 % (mostly see-through) to 100 % (solid)
         self.alpha_scale = tk.Scale(
@@ -519,6 +577,145 @@ class Mirror:
         if self.current not in self.order:
             self.step(1)
 
+    # -- settings form -----------------------------------------------------
+
+    def open_settings(self):
+        if self.current is None:
+            return
+        if self.settings_win is not None:
+            self.settings_win.lift()
+            return
+        key = self.current
+        with lock:
+            name = apps[key]["name"]
+        was_paused = self.paused
+        if not self.paused:
+            self.toggle_pause()  # hold this app on screen while it is being edited
+
+        win = self.settings_win = tk.Toplevel(self.root)
+        win.title("%s settings" % name)
+        win.attributes("-topmost", True)
+        win.geometry("+%d+%d" % (self.root.winfo_x() + 30, self.root.winfo_y() + 50))
+        win.minsize(380, 120)
+        body = ttk.Frame(win, padding=12)
+        body.pack(fill="both", expand=True)
+        status = ttk.Label(body, text="Reading this app's settings...")
+        status.pack(anchor="w")
+
+        def closed():
+            self.settings_win = None
+            win.destroy()
+            if not was_paused and self.paused:
+                self.toggle_pause()
+
+        win.protocol("WM_DELETE_WINDOW", closed)
+        result = {}
+
+        def load():
+            try:
+                result["schema"] = fetch_schema(jobs[key][0])
+            except Exception as e:
+                result["error"] = str(e)
+
+        threading.Thread(target=load, daemon=True).start()
+
+        def wait():
+            if self.settings_win is not win:
+                return
+            if "error" in result:
+                status.configure(text=result["error"])
+            elif "schema" in result:
+                status.destroy()
+                self.build_settings_form(win, body, key, result["schema"], closed)
+            else:
+                win.after(200, wait)
+
+        wait()
+
+    def build_settings_form(self, win, body, key, schema, closed):
+        saved = load_app_settings().get(key, {})
+        getters = {}  # field id -> function returning the value to save ("" = use the app's default)
+        easy = ("text", "datetime", "color", "onoff", "dropdown", "location")
+        if not [f for f in schema if f.get("type") in easy]:
+            ttk.Label(body, text="This app has no settings that can be changed here.").pack(anchor="w")
+
+        for field in schema:
+            kind, fid = field.get("type"), field.get("id")
+            if not fid:
+                continue
+            ttk.Label(body, text=field.get("name", fid), font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 0))
+            if field.get("description"):
+                ttk.Label(body, text=field["description"], foreground="#666666", wraplength=420).pack(anchor="w")
+            current = saved.get(fid, field.get("default", ""))
+
+            if kind == "onoff":
+                var = tk.BooleanVar(value=str(current).lower() == "true")
+                ttk.Checkbutton(body, text="On", variable=var).pack(anchor="w")
+                getters[fid] = lambda var=var: "true" if var.get() else "false"
+            elif kind == "dropdown":
+                options = field.get("options") or []
+                shown = [o.get("display") or o.get("text") or o.get("value", "") for o in options]
+                values = [o.get("value", "") for o in options]
+                box = ttk.Combobox(body, values=shown, state="readonly", width=44)
+                if current in values:
+                    box.current(values.index(current))
+                box.pack(anchor="w")
+                getters[fid] = lambda box=box, values=values: values[box.current()] if box.current() >= 0 else ""
+            elif kind == "location":
+                try:
+                    loc = json.loads(current) if current else json.loads(STORE_CONFIG["location"])
+                except ValueError:
+                    loc = {}
+                grid = ttk.Frame(body)
+                grid.pack(anchor="w")
+                entries = {}
+                for row, (part, label) in enumerate((("locality", "Place name"), ("lat", "Latitude"),
+                                                     ("lng", "Longitude"), ("timezone", "Time zone"))):
+                    ttk.Label(grid, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8))
+                    entry = ttk.Entry(grid, width=32)
+                    entry.insert(0, str(loc.get(part, "")))
+                    entry.grid(row=row, column=1, pady=1)
+                    entries[part] = entry
+
+                def location_value(entries=entries):
+                    loc = {part: e.get().strip() for part, e in entries.items()}
+                    return json.dumps(loc) if loc["lat"] and loc["lng"] else ""
+
+                getters[fid] = location_value
+            elif kind in ("text", "datetime", "color"):
+                entry = ttk.Entry(body, width=47)
+                entry.insert(0, str(current))
+                entry.pack(anchor="w")
+                if kind == "datetime":
+                    ttk.Label(body, text="Format: 2023-01-15T08:30:00Z", foreground="#666666").pack(anchor="w")
+                elif kind == "color":
+                    ttk.Label(body, text="Format: #RRGGBB", foreground="#666666").pack(anchor="w")
+                getters[fid] = lambda entry=entry: entry.get().strip()
+            else:
+                ttk.Label(body, text="(This kind of setting needs the phone app; not available here.)",
+                          foreground="#666666").pack(anchor="w")
+
+        def store(values):
+            data = load_app_settings()
+            if values:
+                data[key] = values
+            else:
+                data.pop(key, None)
+            try:
+                save_app_settings(data)
+            except OSError as e:
+                log("settings not saved: %s" % e)
+            due[key] = 0  # render this app again right away
+            self.reload_key = key
+            closed()
+
+        buttons = ttk.Frame(body)
+        buttons.pack(anchor="e", pady=(14, 0))
+        ttk.Button(buttons, text="Use defaults", command=lambda: store({})).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Cancel", command=closed).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Save", command=lambda: store(
+            {fid: v for fid, v in ((fid, get()) for fid, get in getters.items()) if v != ""})).pack(side="left", padx=4)
+
     def toggle_pause(self):
         self.paused = not self.paused
         self.pause_btn.configure(text="Resume" if self.paused else "Pause")
@@ -539,6 +736,12 @@ class Mirror:
         self.poll_once()
         if self.current is None and self.order:
             self.show(self.order[0])
+        elif self.current is not None:
+            with lock:
+                version = apps[self.current]["version"]
+            if version != self.shown_version and self.reload_key == self.current:
+                self.reload_key = None
+                self.show(self.current)  # just re-rendered with new settings: show the result
         self.root.after(2000, self.poll)
 
     def step(self, direction):
@@ -563,6 +766,7 @@ class Mirror:
         self.show_until = time.time() + min(30000, max(total, SHOW_MS)) / 1000.0  # short animations loop
         with lock:
             a = dict(apps[iid])
+        self.shown_version = a["version"]
         n = self.order.index(iid) + 1 if iid in self.order else 0
         note = "last good image" if a["error"] else a["note"]
         self.title.configure(text="%s   %d/%d%s" % (a["name"], n, len(self.order), "   (" + note + ")" if note else ""))
