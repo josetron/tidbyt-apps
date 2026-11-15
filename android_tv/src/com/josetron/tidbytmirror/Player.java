@@ -22,6 +22,13 @@ final class Player {
     static final int[] WOODS = {
         Color.rgb(43, 29, 20), Color.rgb(90, 63, 41), Color.rgb(130, 90, 58), Color.rgb(176, 126, 80),
     };
+    // Frame tints: a colour mixed into the wood (None leaves the wood as it is)
+    static final String[] TINT_NAMES = {"None", "Cherry red", "Honey", "Grey", "Black", "White", "Blue", "Green"};
+    static final int[] TINTS = {
+        0, Color.rgb(140, 30, 24), Color.rgb(214, 160, 60), Color.rgb(120, 122, 126), Color.rgb(12, 12, 12),
+        Color.rgb(236, 232, 224), Color.rgb(30, 70, 150), Color.rgb(30, 110, 60),
+    };
+    private static final float TINT_STRENGTH = 0.6f;  // how much of the tint colour goes into the wood
     private static final long SHOW_MS = 15000;          // the Tidbyt gives each app about this long
     private static final long MAX_SHOW_MS = 30000;
     private static final long SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -67,8 +74,18 @@ final class Player {
         view.setUnlit(Math.min(100, Math.max(0, prefs.getInt("unlit", 42))) / 100f);
         view.setFrameThickness(Math.min(200, Math.max(20, prefs.getInt("frame_thickness", 70))) / 100f);
         view.setFramed(prefs.getBoolean("frame", true));
-        view.setWood(WOODS[Math.min(WOODS.length - 1, Math.max(0, prefs.getInt("wood", 1)))]);
+        int wood = WOODS[Math.min(WOODS.length - 1, Math.max(0, prefs.getInt("wood", 1)))];
+        int tint = Math.min(TINTS.length - 1, Math.max(0, prefs.getInt("tint", 0)));
+        if (tint > 0) {
+            wood = Color.rgb(mix(Color.red(wood), Color.red(TINTS[tint])), mix(Color.green(wood), Color.green(TINTS[tint])),
+                    mix(Color.blue(wood), Color.blue(TINTS[tint])));
+        }
+        view.setWood(wood);
         view.setShowNames(prefs.getBoolean("names", false));
+    }
+
+    private static int mix(int wood, int tint) {
+        return Math.round(wood + (tint - wood) * TINT_STRENGTH);
     }
 
     void start() {

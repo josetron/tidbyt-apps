@@ -35,7 +35,7 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final long MENU_CLOSES_MS = 30000;  // the setup menu goes away by itself when left alone
     private static final int NONE = 0, SETUP = 1, APP = 2;
-    private static final int SETUP_ROWS = 8, HIDDEN_ROW = 7;
+    private static final int SETUP_ROWS = 9, HIDDEN_ROW = 8;
     private static final int[] IDLE_MINUTES = {1, 2, 5, 10, 15, 30, 60};  // choices for when the screen saver starts
     private static final int FRAME_CHOICES = Player.WOODS.length + 1;  // the woods, then "no frame"
 
@@ -129,18 +129,19 @@ public final class MainActivity extends Activity {
         int hidden = player.hiddenCount();
         view.setMenu("Tidbyt Mirror setup",
                 new String[] {"Screen brightness", "Unlit dots", "Show app name on change", "Frame",
-                    "Frame thickness", "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
+                    "Frame tint", "Frame thickness", "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
                 new String[] {
                     prefs.getInt("brightness", 70) + "%",
                     prefs.getInt("unlit", 42) == 0 ? "Off" : prefs.getInt("unlit", 42) + "%",
                     prefs.getBoolean("names", false) ? "On" : "Off",
                     frame < Player.WOODS.length ? Player.WOOD_NAMES[frame] : "No frame (full screen)",
+                    Player.TINT_NAMES[Math.min(Player.TINTS.length - 1, Math.max(0, prefs.getInt("tint", 0)))],
                     prefs.getInt("frame_thickness", 70) + "%",
                     isScreenSaver() ? "On" : "Off",
                     idleLabel(),
                     hidden == 0 ? "None" : hidden + " hidden  (OK: show all)",
                 },
-                new boolean[] {true, true, true, true, true, true, true, false},
+                new boolean[] {true, true, true, true, true, true, true, true, false},
                 row, "Up / Down: choose    Left / Right: change    Back: close");
         handler.removeCallbacks(closeMenu);
         handler.postDelayed(closeMenu, MENU_CLOSES_MS);
@@ -171,14 +172,19 @@ public final class MainActivity extends Activity {
                 break;
             }
             case 4: {
+                int n = Player.TINTS.length;
+                prefs.edit().putInt("tint", ((prefs.getInt("tint", 0) + direction) % n + n) % n).apply();
+                break;
+            }
+            case 5: {
                 int thickness = Math.min(200, Math.max(20, prefs.getInt("frame_thickness", 70) + 10 * direction));
                 prefs.edit().putInt("frame_thickness", thickness).apply();
                 break;
             }
-            case 5:
+            case 6:
                 setScreenSaver(!isScreenSaver());
                 break;
-            case 6:
+            case 7:
                 changeIdleTime(direction);
                 break;
             default:
