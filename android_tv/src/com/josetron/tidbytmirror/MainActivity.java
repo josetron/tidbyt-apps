@@ -35,7 +35,7 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final long MENU_CLOSES_MS = 30000;  // the setup menu goes away by itself when left alone
     private static final int NONE = 0, SETUP = 1, APP = 2;
-    private static final int SETUP_ROWS = 9, HIDDEN_ROW = 8;
+    private static final int SETUP_ROWS = 10, HIDDEN_ROW = 9;
     private static final int[] IDLE_MINUTES = {1, 2, 5, 10, 15, 30, 60};  // choices for when the screen saver starts
     private static final int FRAME_CHOICES = Player.WOODS.length + 1;  // the woods, then "no frame"
 
@@ -129,19 +129,20 @@ public final class MainActivity extends Activity {
         int hidden = player.hiddenCount();
         view.setMenu("Tidbyt Mirror setup",
                 new String[] {"Screen brightness", "Unlit dots", "Show app name on change", "Frame",
-                    "Frame tint", "Frame thickness", "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
+                    "Frame tint", "Frame thickness", "Frame brightness", "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
                 new String[] {
                     prefs.getInt("brightness", 70) + "%",
                     prefs.getInt("unlit", 42) == 0 ? "Off" : prefs.getInt("unlit", 42) + "%",
                     prefs.getBoolean("names", false) ? "On" : "Off",
                     frame < Player.WOODS.length ? Player.WOOD_NAMES[frame] : "No frame (full screen)",
-                    Player.TINT_NAMES[Math.min(Player.TINTS.length - 1, Math.max(0, prefs.getInt("tint", 0)))],
+                    Player.tintLabel(prefs.getInt("tint_hue", -1)),
                     prefs.getInt("frame_thickness", 70) + "%",
+                    prefs.getInt("frame_brightness", 100) + "%",
                     isScreenSaver() ? "On" : "Off",
                     idleLabel(),
                     hidden == 0 ? "None" : hidden + " hidden  (OK: show all)",
                 },
-                new boolean[] {true, true, true, true, true, true, true, true, false},
+                new boolean[] {true, true, true, true, true, true, true, true, true, false},
                 row, "Up / Down: choose    Left / Right: change    Back: close");
         handler.removeCallbacks(closeMenu);
         handler.postDelayed(closeMenu, MENU_CLOSES_MS);
@@ -172,8 +173,16 @@ public final class MainActivity extends Activity {
                 break;
             }
             case 4: {
-                int n = Player.TINTS.length;
-                prefs.edit().putInt("tint", ((prefs.getInt("tint", 0) + direction) % n + n) % n).apply();
+                // Off, then round the colour wheel in small steps, then Off again
+                int hue = prefs.getInt("tint_hue", -1) + Player.TINT_STEP * direction;
+                if (hue < -Player.TINT_STEP) {
+                    hue = 360 - Player.TINT_STEP;
+                } else if (hue < 0 || hue >= 360) {
+                    hue = -1;
+                } else if (hue == Player.TINT_STEP - 1) {
+                    hue = 0;  // stepping right from Off (-1) lands on red
+                }
+                prefs.edit().putInt("tint_hue", hue).apply();
                 break;
             }
             case 5: {
@@ -181,10 +190,15 @@ public final class MainActivity extends Activity {
                 prefs.edit().putInt("frame_thickness", thickness).apply();
                 break;
             }
-            case 6:
+            case 6: {
+                int level = Math.min(100, Math.max(10, prefs.getInt("frame_brightness", 100) + 5 * direction));
+                prefs.edit().putInt("frame_brightness", level).apply();
+                break;
+            }
+            case 7:
                 setScreenSaver(!isScreenSaver());
                 break;
-            case 7:
+            case 8:
                 changeIdleTime(direction);
                 break;
             default:
