@@ -27,7 +27,7 @@ import java.util.List;
  * Remote, while pictures play:
  *   Left / Right  previous / next app
  *   OK            pause
- *   Down          setup menu: brightness, app names, frame, screen saver and its start time, hidden apps
+ *   Down          setup menu: brightness, unlit dots, app names, frame, screen saver and its start time, hidden apps
  *   Up            this app's menu: show or hide it on this TV, and its own settings
  *   Back          exit
  * In a menu: Up / Down choose a row, Left / Right change it, OK edits or confirms, Back closes.
@@ -35,7 +35,7 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final long MENU_CLOSES_MS = 30000;  // the setup menu goes away by itself when left alone
     private static final int NONE = 0, SETUP = 1, APP = 2;
-    private static final int SETUP_ROWS = 6, HIDDEN_ROW = 5;
+    private static final int SETUP_ROWS = 7, HIDDEN_ROW = 6;
     private static final int[] IDLE_MINUTES = {1, 2, 5, 10, 15, 30, 60};  // choices for when the screen saver starts
     private static final int FRAME_CHOICES = Player.WOODS.length + 1;  // the woods, then "no frame"
 
@@ -128,17 +128,18 @@ public final class MainActivity extends Activity {
         int frame = frameChoice();
         int hidden = player.hiddenCount();
         view.setMenu("Tidbyt Mirror setup",
-                new String[] {"Screen brightness", "Show app name on change", "Frame", "Google TV screen saver",
-                    "Screen saver starts after", "Hidden apps"},
+                new String[] {"Screen brightness", "Unlit dots", "Show app name on change", "Frame",
+                    "Google TV screen saver", "Screen saver starts after", "Hidden apps"},
                 new String[] {
                     prefs.getInt("brightness", 70) + "%",
+                    prefs.getInt("unlit", 42) == 0 ? "Off" : prefs.getInt("unlit", 42) + "%",
                     prefs.getBoolean("names", false) ? "On" : "Off",
                     frame < Player.WOODS.length ? Player.WOOD_NAMES[frame] : "No frame (full screen)",
                     isScreenSaver() ? "On" : "Off",
                     idleLabel(),
                     hidden == 0 ? "None" : hidden + " hidden  (OK: show all)",
                 },
-                new boolean[] {true, true, true, true, true, false},
+                new boolean[] {true, true, true, true, true, true, false},
                 row, "Up / Down: choose    Left / Right: change    Back: close");
         handler.removeCallbacks(closeMenu);
         handler.postDelayed(closeMenu, MENU_CLOSES_MS);
@@ -151,10 +152,15 @@ public final class MainActivity extends Activity {
                 prefs.edit().putInt("brightness", brightness).apply();
                 break;
             }
-            case 1:
+            case 1: {
+                int unlit = Math.min(100, Math.max(0, prefs.getInt("unlit", 42) + 3 * direction));
+                prefs.edit().putInt("unlit", unlit).apply();
+                break;
+            }
+            case 2:
                 prefs.edit().putBoolean("names", !prefs.getBoolean("names", false)).apply();
                 break;
-            case 2: {
+            case 3: {
                 int frame = ((frameChoice() + direction) % FRAME_CHOICES + FRAME_CHOICES) % FRAME_CHOICES;
                 SharedPreferences.Editor editor = prefs.edit().putBoolean("frame", frame < Player.WOODS.length);
                 if (frame < Player.WOODS.length) {
@@ -163,10 +169,10 @@ public final class MainActivity extends Activity {
                 editor.apply();
                 break;
             }
-            case 3:
+            case 4:
                 setScreenSaver(!isScreenSaver());
                 break;
-            case 4:
+            case 5:
                 changeIdleTime(direction);
                 break;
             default:

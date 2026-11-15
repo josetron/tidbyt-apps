@@ -20,7 +20,7 @@ final class LedView extends View {
     private static final int W = 64;
     private static final int H = 32;
     private static final int OFF_BELOW = 28;                     // brightest channel under this = unlit LED
-    private static final int OFF_COLOR = Color.rgb(28, 29, 31);  // an unlit LED: a very faint grey dot
+    private static final int[] OFF_RGB = {46, 48, 52};           // an unlit LED at 100%: a faint grey dot
     private static final float FRAME_WOOD = 2.2f;               // wood thickness, in Tidbyt pixels
     private static final float FRAME_GAP = 0.8f;                 // black bezel inside the wood
 
@@ -42,6 +42,7 @@ final class LedView extends View {
     private long labelUntil;
     private String message = "Loading Tidbyt Mirror...";
     private float brightness = 0.70f;  // lit LEDs are dimmed to this share: a TV is far brighter than the panel
+    private int offColor = Color.rgb(19, 20, 22);  // unlit LEDs, at the level set in the setup menu
     private boolean showNames;         // show the app's name for a moment each time the app changes
     private String menuTitle;          // a menu, when open: a title, then one label and one value per row
     private String[] menuLabels;
@@ -92,6 +93,13 @@ final class LedView extends View {
 
     void setBrightness(float value) {
         brightness = Math.max(0.2f, Math.min(1f, value));
+        invalidate();
+    }
+
+    /** How visible the unlit LEDs are: 0 = invisible, 1 = the grey of the real panel under room light. */
+    void setUnlit(float level) {
+        level = Math.max(0f, Math.min(1f, level));
+        offColor = Color.rgb((int) (OFF_RGB[0] * level), (int) (OFF_RGB[1] * level), (int) (OFF_RGB[2] * level));
         invalidate();
     }
 
@@ -231,7 +239,7 @@ final class LedView extends View {
                 int color = pixels[y * W + x];
                 int brightest = Math.max(Color.red(color), Math.max(Color.green(color), Color.blue(color)));
                 if (brightest < OFF_BELOW) {
-                    dot.setColor(OFF_COLOR);
+                    dot.setColor(offColor);
                     canvas.drawCircle(left + x * cell + half, cy, unlit, dot);
                 } else {
                     dot.setColor(Color.rgb((int) (Color.red(color) * brightness),
