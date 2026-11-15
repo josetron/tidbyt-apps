@@ -7,7 +7,8 @@ Tidbyt Mirror: a frameless desktop window that plays the same apps as the Tidbyt
 Using the window
   - Drag anywhere on the picture to move it.
   - Drag the bottom-right corner, or turn the mouse wheel, to resize it (always 2:1).
-  - Hover over it for the menu: previous / next app, pause, keep on top, close. It disappears
+  - Hover over it for the menu: previous / next app, pause, opacity slider, store apps on/off,
+    keep on top, close. It disappears
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
 
@@ -337,6 +338,7 @@ class Mirror:
         self.cell = min(MAX_CELL, max(MIN_CELL, int(s.get("cell", DEFAULT_CELL))))
         self.on_top = bool(s.get("on_top", False))
         self.store = bool(s.get("store", True))
+        self.alpha = min(100, max(20, int(s.get("alpha", 100))))  # window opacity in percent
         self.paused = False
         self.order = []      # ids that can be shown right now
         self.current = None  # id being shown
@@ -380,6 +382,17 @@ class Mirror:
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
         self.store_btn = button("", self.toggle_store, side="right")
+
+        # transparency slider: 20 % (mostly see-through) to 100 % (solid)
+        self.alpha_scale = tk.Scale(
+            bar, from_=20, to=100, orient="horizontal", showvalue=False, length=70, width=9, sliderlength=12,
+            bg=BAR_BG, fg=BAR_FG, troughcolor="#3f4b57", activebackground=BAR_FG, highlightthickness=0, bd=0,
+            command=self.set_alpha,
+        )
+        self.alpha_scale.set(self.alpha)
+        self.alpha_scale.bind("<ButtonRelease-1>", lambda e: self.save_settings())
+        self.alpha_scale.pack(side="right", padx=(2, 6))
+        tk.Label(bar, text="Opacity", bg=BAR_BG, fg=BAR_DIM, font=("Segoe UI", 9)).pack(side="right")
         self.title = tk.Label(bar, text="", bg=BAR_BG, fg=BAR_FG, font=("Segoe UI", 9), anchor="w")
         self.title.pack(side="left", fill="x", expand=True, padx=6)
         self.update_top_label()
@@ -416,7 +429,7 @@ class Mirror:
 
     def save_settings(self):
         data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top,
-                "store": self.store}
+                "store": self.store, "alpha": self.alpha}
         try:
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -493,6 +506,10 @@ class Mirror:
     def update_top_label(self):
         self.top_btn.configure(text="On top ✓" if self.on_top else "On top", fg=BAR_FG if self.on_top else BAR_DIM)
         self.store_btn.configure(text="Store ✓" if self.store else "Store", fg=BAR_FG if self.store else BAR_DIM)
+
+    def set_alpha(self, value):
+        self.alpha = min(100, max(20, int(float(value))))
+        self.root.attributes("-alpha", self.alpha / 100.0)
 
     def toggle_store(self):
         self.store = not self.store
