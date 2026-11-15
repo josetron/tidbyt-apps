@@ -22,6 +22,8 @@ Using the window
     this (public) repo because they can be personal, and only affect the mirror, not the device.
 
   python  tools/tidbyt_mirror.py --fetch-store   downloads the store apps installed on the device
+  python  tools/tidbyt_mirror.py --feed <dir>    renders every app once into <dir> with a manifest.json
+                                                 (no window; used by GitHub Actions for the Android TV app)
 
 How it works: the Tidbyt API can list the installations on the device but cannot return their
 images, so this renders the apps with Pixlet and plays them in the device's order.
@@ -48,12 +50,15 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter as tk
 from datetime import datetime
 import urllib.request
-from tkinter import ttk
 
-from PIL import Image, ImageChops, ImageDraw, ImageTk
+try:  # the window needs these; the headless --feed mode (GitHub Actions) does not
+    import tkinter as tk
+    from tkinter import ttk
+    from PIL import Image, ImageChops, ImageDraw, ImageTk
+except ImportError:
+    tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, ".cache", "mirror")
@@ -86,12 +91,16 @@ BAR_DIM = "#7d8794"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
+SECRET_ENV = {"api_token.txt": "TIDBYT_API_TOKEN", "tmdb_api_key.txt": "TMDB_API_KEY"}  # GitHub Actions secrets
+FEED = False  # True in --feed mode: publish-safe renders (no personal settings, no sample data)
+
+
 def read_secret(name):
     try:
         with open(os.path.join(HOME, name), encoding="utf-8") as f:
             return f.read().strip()
     except OSError:
-        return ""
+        return os.environ.get(SECRET_ENV.get(name, ""), "").strip()
 
 
 def log(msg):
@@ -108,8 +117,10 @@ def fixture(app):
 
 
 def movies_config():
-    key = read_secret("tmdb_api_key.txt") or os.environ.get("TMDB_API_KEY", "")
+    key = read_secret("tmdb_api_key.txt")
     note = ""
+    if FEED and not key:
+        raise RuntimeError("no TMDB key: Now Playing is left out of the feed")
     if key:
         os.environ["TMDB_API_KEY"] = key
         import movies_snapshot
@@ -305,7 +316,7 @@ def render(iid, star, build):
     tmp = gif_path(iid)[:-4] + ".tmp.gif"
     try:
         config, note = build()
-        mine = load_app_settings().get(iid, {})
+        mine = {} if FEED else load_app_settings().get(iid, {})  # personal settings never go in the public feed
         for k, v in mine.items():
             if k != "snapshot":
                 config[k] = v
@@ -1188,7 +1199,39 @@ class Mirror:
         self.screen.configure(image=self.photo, text="")
 
 
+def build_feed(out_dir):
+    """Renders every app on the device once into out_dir and writes manifest.json: the public
+    picture feed the Android TV app plays (android_tv/). Returns the number of apps written."""
+    global OUT, FEED
+    import hashlib
+    OUT, FEED = os.path.abspath(out_dir), True
+    os.makedirs(OUT, exist_ok=True)
+    try:
+        fetch_store()
+    except SystemExit as e:  # no token or no git: carry on with the apps from this repo
+        log("store apps not fetched: %s" % e)
+    refresh_device()
+    with lock:
+        todo = [k for k in order if apps[k]["on_device"]]
+    entries = []
+    for key in todo:
+        star, build, _ = jobs[key]
+        render(key, star, build)
+        if apps[key]["version"] > 0:
+            with open(gif_path(key), "rb") as f:
+                digest = hashlib.sha1(f.read()).hexdigest()[:12]
+            entries.append({"id": key, "name": apps[key]["name"], "file": os.path.basename(gif_path(key)),
+                            "version": digest, "store": apps[key]["store"]})
+    with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump({"generated": int(time.time()), "apps": entries}, f, indent=1)
+    log("feed: %d apps in %s" % (len(entries), OUT))
+    return len(entries)
+
+
 def main():
+    if "--feed" in sys.argv:
+        out_dir = sys.argv[sys.argv.index("--feed") + 1]
+        sys.exit(0 if build_feed(out_dir) else 1)
     os.makedirs(OUT, exist_ok=True)
     if "--fetch-store" in sys.argv:
         fetch_store()

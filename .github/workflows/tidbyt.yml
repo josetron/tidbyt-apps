@@ -8,13 +8,13 @@ on:
     - cron: "1-59/5 8-23 * * 1-5"   # market, every 5 min (script keeps 04:00-20:00 ET weekdays)
     - cron: "1-59/5 0 * * 2-6"      # market, evening hour that falls after midnight UTC in winter
     - cron: "33 * * * *"            # market hourly (nights, weekends: CLOSED cards stay current)
-    - cron: "7-59/15 * * * *"       # weather, Pixel Museum, Pixel Aquarium, Astros News, Astros GameDay: every 15 min
+    - cron: "7-59/15 * * * *"       # weather, Pixel Museum, Pixel Aquarium, Astros News, Astros GameDay, TV feed: every 15 min
   workflow_dispatch:
     inputs:
       group:
         description: "Which apps to push now"
         type: choice
-        options: [market, weather, movies, stars, gameday, all]
+        options: [market, weather, movies, stars, gameday, feed, all]
         default: all
 
 permissions:
@@ -113,6 +113,45 @@ jobs:
           TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
         run: python tools/cloud_push.py weather
+
+  feed:   # pictures for the Android TV mirror app (android_tv/), published to the mirror-feed branch
+    if: >-
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'feed' || github.event.inputs.group == 'all') ||
+      github.event.schedule == '7-59/15 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # to push the mirror-feed branch
+    concurrency: { group: feed, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pixlet
+      - run: pip install --quiet pillow
+      - name: Week number (the cache below is renewed weekly)
+        id: week
+        run: echo "week=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore store apps and IMDb ratings
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/community
+            .cache/imdb
+          key: feed-${{ steps.week.outputs.week }}
+          restore-keys: feed-
+      - name: Render every app
+        env:
+          TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python tools/tidbyt_mirror.py --feed feed
+      - name: Publish to the mirror-feed branch (one commit, replaced each time)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd feed
+          git init -q -b mirror-feed
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Tidbyt Mirror picture feed"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" mirror-feed
 
   gameday:   # stays running through a game (up to ~6 h), pushing the live score every 90 s
     if: >-
