@@ -77,7 +77,11 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
   `.github/actions/pixlet`.
   - Market: every 5 min on weekdays 04:00–20:00 ET, hourly otherwise.
   - Weather + Pixel Museum: every 15 min.
-  - GitHub may start scheduled runs a few minutes late.
+  - **GitHub's schedule is unreliable here:** measured 2026-11-15, scheduled runs arrived every 1–4 hours instead of every
+    5–15 minutes. The **`ticker` job** fixes that: it runs ~5.5 h, and every 5 min starts the other jobs with
+    `workflow_dispatch` (`tick-market` every 5 min, `tick-quarter` every 15, `tick-hourly` every 60), then hands over to a
+    new ticker. Any scheduled run restarts the chain if it ever breaks; Actions tab → Tidbyt → Run workflow → `ticker` starts it
+    by hand. Expect ~400 short runs a day (free on a public repo). To stop it: cancel the running ticker in the Actions tab.
 - **Secrets** (repo Settings → Secrets → Actions): `TIDBYT_API_TOKEN`, `TIDBYT_DEVICE_ID`, `TMDB_API_KEY`
   (the TMDB v3 key; also kept locally in `%USERPROFILE%\.tidbyt	mdb_api_key.txt`).
 - **Movies job:** hourly. It downloads IMDb's `title.ratings.tsv.gz` at most once a day (Actions cache).

@@ -1,6 +1,9 @@
 # Pushes the Tidbyt apps from GitHub's servers, so no home PC is needed.
 # Secrets (Settings > Secrets and variables > Actions): TIDBYT_API_TOKEN, TIDBYT_DEVICE_ID.
-# GitHub may start scheduled runs a few minutes late; that is expected.
+# GitHub starts scheduled runs late: on this repo they arrive every 1-4 hours, not every 5 minutes.
+# So the "ticker" job at the bottom keeps time itself: it runs for hours and starts the other jobs on
+# the minute with workflow_dispatch ("tick-..." groups, which behave like the schedules they replace).
+# The cron lines stay as the fallback that (re)starts the ticker.
 name: Tidbyt
 
 on:
@@ -14,7 +17,7 @@ on:
       group:
         description: "Which apps to push now"
         type: choice
-        options: [market, weather, movies, stars, gameday, feed, all]
+        options: [market, weather, movies, stars, gameday, feed, all, ticker, tick-market, tick-quarter, tick-hourly]
         default: all
 
 permissions:
@@ -30,7 +33,8 @@ jobs:
       github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'market' || github.event.inputs.group == 'all') ||
       github.event.schedule == '1-59/5 8-23 * * 1-5' ||
       github.event.schedule == '1-59/5 0 * * 2-6' ||
-      github.event.schedule == '33 * * * *'
+      github.event.schedule == '33 * * * *' ||
+      github.event.inputs.group == 'tick-market' || github.event.inputs.group == 'tick-hourly'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency: { group: market, cancel-in-progress: false }
@@ -48,7 +52,8 @@ jobs:
           TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
           MP_PAGE: ${{ github.run_number }}
-          MODE: ${{ github.event_name == 'workflow_dispatch' && '--force' || (github.event.schedule == '33 * * * *' && '--hourly' || '') }}
+          # by hand: always push. Hourly (schedule or tick): only outside market hours. Otherwise: only in market hours.
+          MODE: ${{ (github.event.inputs.group == 'market' || github.event.inputs.group == 'all') && '--force' || ((github.event.schedule == '33 * * * *' || github.event.inputs.group == 'tick-hourly') && '--hourly' || '') }}
         run: python tools/cloud_push.py market $MODE
       - name: Save market snapshot
         if: always() && hashFiles('.cache/marketpulse_snapshot.json') != ''
@@ -57,14 +62,14 @@ jobs:
           path: .cache/marketpulse_snapshot.json
           key: mp-snapshot-${{ github.run_id }}
       - name: Keep the schedule alive
-        if: github.event.schedule == '33 * * * *'
+        if: github.event.schedule == '33 * * * *' || github.event.inputs.group == 'tick-hourly'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tidbyt.yml/enable"
 
   movies:   # hourly: Now Playing and Astros Stars
     if: >-
       github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'stars' || github.event.inputs.group == 'all') ||
-      github.event.schedule == '33 * * * *'
+      github.event.schedule == '33 * * * *' || github.event.inputs.group == 'tick-hourly'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     concurrency: { group: movies, cancel-in-progress: false }
@@ -101,7 +106,7 @@ jobs:
   weather:
     if: >-
       github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'weather' || github.event.inputs.group == 'all') ||
-      github.event.schedule == '7-59/15 * * * *'
+      github.event.schedule == '7-59/15 * * * *' || github.event.inputs.group == 'tick-quarter'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     concurrency: { group: weather, cancel-in-progress: false }
@@ -117,7 +122,7 @@ jobs:
   feed:   # pictures for the Android TV mirror app (android_tv/), published to the mirror-feed branch
     if: >-
       github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'feed' || github.event.inputs.group == 'all') ||
-      github.event.schedule == '7-59/15 * * * *'
+      github.event.schedule == '7-59/15 * * * *' || github.event.inputs.group == 'tick-quarter'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -156,7 +161,7 @@ jobs:
   gameday:   # stays running through a game (up to ~6 h), pushing the live score every 90 s
     if: >-
       github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'gameday' || github.event.inputs.group == 'all') ||
-      github.event.schedule == '7-59/15 * * * *'
+      github.event.schedule == '7-59/15 * * * *' || github.event.inputs.group == 'tick-quarter'
     runs-on: ubuntu-latest
     timeout-minutes: 355
     concurrency: { group: gameday, cancel-in-progress: false }
@@ -168,3 +173,30 @@ jobs:
           TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
         run: python tools/cloud_push.py gameday --follow
+
+  ticker:   # the clock: starts the other jobs on time, because GitHub's own schedule arrives hours late
+    # Any scheduled run (or "ticker" by hand) starts one. Only one runs at a time: a second waits in the
+    # concurrency group and takes over when the first ends after ~5.5 hours, so the chain never stops.
+    if: github.event_name == 'schedule' || github.event.inputs.group == 'ticker'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    concurrency: { group: ticker, cancel-in-progress: false }
+    env:
+      GH_TOKEN: ${{ github.token }}   # workflow_dispatch is the one event this token may trigger
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Tick every 5 minutes
+        run: |
+          start() { gh workflow run tidbyt.yml --ref "${GITHUB_REF_NAME}" -f group="$1" || echo "could not start $1"; }
+          end=$((SECONDS + 330 * 60))
+          k=0
+          while [ "$SECONDS" -lt "$end" ]; do
+            start tick-market                               # every 5 min (the script itself skips closed hours)
+            if [ $((k % 3)) -eq 1 ]; then start tick-quarter; fi   # every 15 min: weather, news, gameday, TV feed
+            if [ $((k % 12)) -eq 2 ]; then start tick-hourly; fi   # every hour: movies, stars, closed-market cards
+            k=$((k + 1))
+            sleep 300
+          done
+      - name: Hand over to the next ticker
+        if: always()
+        run: gh workflow run tidbyt.yml --ref "${GITHUB_REF_NAME}" -f group=ticker
