@@ -27,7 +27,7 @@ import java.util.List;
  * Remote, while pictures play:
  *   Left / Right  previous / next app
  *   OK            pause
- *   Down          setup menu: brightness, app names, frame, screen saver, hidden apps
+ *   Down          setup menu: brightness, app names, frame, screen saver and its start time, hidden apps
  *   Up            this app's menu: show or hide it on this TV, and its own settings
  *   Back          exit
  * In a menu: Up / Down choose a row, Left / Right change it, OK edits or confirms, Back closes.
@@ -35,6 +35,8 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final long MENU_CLOSES_MS = 30000;  // the setup menu goes away by itself when left alone
     private static final int NONE = 0, SETUP = 1, APP = 2;
+    private static final int SETUP_ROWS = 6, HIDDEN_ROW = 5;
+    private static final int[] IDLE_MINUTES = {1, 2, 5, 10, 15, 30, 60};  // choices for when the screen saver starts
     private static final int FRAME_CHOICES = Player.WOODS.length + 1;  // the woods, then "no frame"
 
     /** One row of the app menu that came from the PC: a text, an on/off switch or a list of choices. */
@@ -127,15 +129,16 @@ public final class MainActivity extends Activity {
         int hidden = player.hiddenCount();
         view.setMenu("Tidbyt Mirror setup",
                 new String[] {"Screen brightness", "Show app name on change", "Frame", "Google TV screen saver",
-                    "Hidden apps"},
+                    "Screen saver starts after", "Hidden apps"},
                 new String[] {
                     prefs.getInt("brightness", 70) + "%",
                     prefs.getBoolean("names", false) ? "On" : "Off",
                     frame < Player.WOODS.length ? Player.WOOD_NAMES[frame] : "No frame (full screen)",
                     isScreenSaver() ? "On" : "Off",
+                    idleLabel(),
                     hidden == 0 ? "None" : hidden + " hidden  (OK: show all)",
                 },
-                new boolean[] {true, true, true, true, false},
+                new boolean[] {true, true, true, true, true, false},
                 row, "Up / Down: choose    Left / Right: change    Back: close");
         handler.removeCallbacks(closeMenu);
         handler.postDelayed(closeMenu, MENU_CLOSES_MS);
@@ -163,11 +166,40 @@ public final class MainActivity extends Activity {
             case 3:
                 setScreenSaver(!isScreenSaver());
                 break;
+            case 4:
+                changeIdleTime(direction);
+                break;
             default:
                 break;
         }
         player.applyLook();
         showSetup();
+    }
+
+    /** How long the TV waits, idle, before it starts the screen saver (the TV's own setting). */
+    private int idleMinutes() {
+        int ms = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT, 600000);
+        return Math.max(1, Math.round(ms / 60000f));
+    }
+
+    private String idleLabel() {
+        int minutes = idleMinutes();
+        return minutes == 60 ? "1 hour" : minutes + (minutes == 1 ? " minute" : " minutes");
+    }
+
+    private void changeIdleTime(int direction) {
+        int minutes = idleMinutes(), at = 0;
+        for (int i = 0; i < IDLE_MINUTES.length; i++) {
+            if (IDLE_MINUTES[i] <= minutes) {
+                at = i;
+            }
+        }
+        at = Math.min(IDLE_MINUTES.length - 1, Math.max(0, at + direction));
+        try {
+            Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT, IDLE_MINUTES[at] * 60000);
+        } catch (SecurityException e) {
+            view.showLabel("Not allowed yet: reinstall from the PC once to allow this");
+        }
     }
 
     /** Makes this app the TV's screen saver, or gives the previous one back. */
@@ -442,7 +474,7 @@ public final class MainActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (menu != NONE) {
-            int rows = menu == SETUP ? 5 : appRows();
+            int rows = menu == SETUP ? SETUP_ROWS : appRows();
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_UP:
                     row = (row + rows - 1) % rows;
@@ -464,7 +496,7 @@ public final class MainActivity extends Activity {
                 case KeyEvent.KEYCODE_ENTER:
                     if (menu == APP) {
                         confirmApp();
-                    } else if (row == 4) {
+                    } else if (row == HIDDEN_ROW) {
                         player.showAllApps();
                         showSetup();
                     } else {

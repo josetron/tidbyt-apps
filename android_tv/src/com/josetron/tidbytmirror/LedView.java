@@ -20,7 +20,7 @@ final class LedView extends View {
     private static final int W = 64;
     private static final int H = 32;
     private static final int OFF_BELOW = 28;                     // brightest channel under this = unlit LED
-    private static final int OFF_COLOR = Color.rgb(46, 48, 52);  // an unlit LED: a faint grey dot
+    private static final int OFF_COLOR = Color.rgb(28, 29, 31);  // an unlit LED: a very faint grey dot
     private static final float FRAME_WOOD = 2.2f;               // wood thickness, in Tidbyt pixels
     private static final float FRAME_GAP = 0.8f;                 // black bezel inside the wood
 
