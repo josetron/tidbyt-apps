@@ -1,0 +1,8 @@
+---
+id: astros-news
+name: Astros News
+summary: Latest Houston Astros news
+desc: One Houston Astros headline at a time from MLB.com's official Astros news feed, with a pixel Astros logo, big bold text and the key word in orange. Each refresh shows the next recent headline.
+author: Tidbyt Dev
+fileName: astros_news.star
+packageName: astrosnews

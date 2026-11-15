@@ -105,6 +105,17 @@
         "apps/now_playing/preview/now_playing_preview.star"
       ],
       "port": 8088
+    },
+    {
+      "name": "astros_news",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8090",
+        "apps/astros_news/astros_news.star"
+      ],
+      "port": 8090
     }
   ]
 }

@@ -31,6 +31,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | `apps/pixel_museum` | `pixelmuseum` | yes | Gallery of 10 public-domain paintings as pixel art; 3 per showing (4 s each), transitions fade / slide / wipe / pixel-dissolve / random; each refresh moves to the next 3 |
 | `apps/pixel_aquarium` | `pixelaquarium` | yes | Animated fish tank: fish both ways at 4 depths, swaying seaweed, bubbles, a crab, a treasure chest that opens; day/night lighting by local time (jellyfish at night); new fish mix each refresh. Seamless 15.0 s loop |
 | `apps/now_playing` | `nowplaying` | yes (hourly) | Movies now in US theaters (TMDB). Each movie gets 7.5 s: a 3 s panning full-screen film still with the title, then the poster card (title, rating/runtime, red NEW tag for the past week, IMDb score counting up). 2 movies per showing; the cloud sends only the hour's pair. Snapshot built by `tools/movies_snapshot.py` (Pillow: blur + box-average, colour boost, lifted darks). Emulator: `python tools/make_preview.py`, then the `now_playing` launch entry (:8088) |
+| `apps/astros_news` | `astrosnews` | yes (15 min) | One Astros headline per refresh from MLB.com's official Astros RSS feed (no key): navy background, 13×13 pixel star-and-H logo, ASTROS header with orange rule, headline in 5x8 two lines at a time (pages flip), first action word in orange, age of the story (1D) top right. Part 1 of the "Astros Pulse" plan (see §8) |
 | `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
 | `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
@@ -59,7 +60,7 @@ Commons (public domain), with the downloaded originals in `apps/pixel_museum/sou
 
 `.claude/launch.json` defines emulator servers for Claude's browser preview
 (`hello_world` :8080, `weather_now` :8081, `mona_lisa` :8082, `pixel_museum` :8083,
-`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy)). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
+`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy), `astros_news` :8090). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
 
 ---
 
@@ -184,3 +185,21 @@ Two apps, both 14.4–15 s. The full design and refresh rules are in **`apps/mar
 - Claude's sandboxed shells can't see PowerShell 7. Run pwsh scripts and `Register-ScheduledTask` with the sandbox disabled.
 
 Show prices and movement only. No buy/sell suggestions.
+
+---
+
+## 8. Next: the rest of "Astros Pulse" (user's plan, 2026-11-14)
+
+The user specified three **separate** Astros apps, each filling one 64×32 screen within its ~15 s slot.
+The Tidbyt playlist decides when each appears; each app decides what to show on its next appearance.
+
+| App | Shows | Updates | Status |
+|---|---|---|---|
+| **Astros News** (`apps/astros_news`) | Logo + one short headline (scroll/flip if long). No portraits or scores | every 15 min | **done** |
+| **Astros Stars** | One player's pixel-art portrait + name + an achievement/stat (e.g. `YORDAN · AL MVP`). Rotate Altuve, Álvarez, Peña, Brown, other current stars | daily | to build |
+| **Astros GameDay** | Live score + inning during games; next game date/time before; final score after. No headlines or portraits | every 1–3 min during games | to build |
+
+Style reference (from the user's mock-up): navy background, white-ringed star-and-H logo, white bold text with
+orange accents. Data idea for GameDay and Stars: the MLB Stats API (`statsapi.mlb.com`, free, no key, Astros
+teamId 117). GameDay's 1–3 min live updates need the punctual external trigger (cron-job.org), because GitHub's
+own schedule runs only every 1–3 hours in practice.
