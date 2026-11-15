@@ -5,3 +5,4 @@
 __pycache__/
 desktop.ini
 apps/*/preview/
+android_tv/build/
