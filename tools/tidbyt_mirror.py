@@ -11,6 +11,7 @@ Using the window
     keep on top, close. It disappears
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
+  - "Frame" in the menu adds or removes the wooden frame around the screen.
   - "Tray" in the menu moves the window's button from the taskbar to the notification area
     (system tray): click the tray icon to hide or show the window, right-click it for a menu.
   - "Apps" in the menu lists every app: untick one to leave it out of the rotation, "Show" jumps
@@ -39,6 +40,7 @@ a TMDB key in %USERPROFILE%\\.tidbyt\\tmdb_api_key.txt (Now Playing; without it,
 import json
 import os
 import queue
+import random
 import re
 import socket
 import subprocess
@@ -538,6 +540,37 @@ def off_layer(cell):
     return ImageChops.multiply(layer, mask.convert("RGB"))
 
 
+WOOD = (164, 116, 72)       # the Tidbyt's walnut-style frame
+FRAME_WOOD = 2.2            # wood thickness, in Tidbyt pixels
+FRAME_GAP = 0.8             # black bezel between the wood and the first LEDs, in Tidbyt pixels
+
+
+def frame_margin(cell):
+    return max(4, round(cell * FRAME_WOOD)) + max(1, round(cell * FRAME_GAP))
+
+
+def frame_image(cell):
+    """The wooden frame with a black opening for the screen; the picture is pasted into it."""
+    wood, margin = max(4, round(cell * FRAME_WOOD)), frame_margin(cell)
+    w, h = W * cell + 2 * margin, H * cell + 2 * margin
+    im = Image.new("RGB", (w, h), WOOD)
+    d = ImageDraw.Draw(im)
+    rnd = random.Random(7)  # the same grain every time
+    for y in range(h):      # horizontal grain: slightly lighter and darker streaks
+        if rnd.random() < 0.55:
+            shade = rnd.randint(-16, 12)
+            x0 = rnd.randint(0, w // 2)
+            d.line((x0, y, x0 + rnd.randint(w // 4, w), y), fill=tuple(max(0, min(255, c + shade)) for c in WOOD))
+    for i in range(2):      # light top-left edge, darker bottom-right edge
+        d.line((i, i, w - 1 - i, i), fill=(196, 148, 100))
+        d.line((i, i, i, h - 1 - i), fill=(186, 138, 92))
+        d.line((i, h - 1 - i, w - 1 - i, h - 1 - i), fill=(104, 70, 40))
+        d.line((w - 1 - i, i, w - 1 - i, h - 1 - i), fill=(116, 80, 46))
+    d.rectangle((wood - 1, wood - 1, w - wood, h - wood), fill=(84, 56, 32))  # shadow line inside the wood
+    d.rectangle((wood, wood, w - 1 - wood, h - 1 - wood), fill=(0, 0, 0))      # the panel
+    return im
+
+
 class Mirror:
     def __init__(self, keep_menu):
         self.keep_menu = keep_menu
@@ -546,6 +579,9 @@ class Mirror:
         self.cell = min(MAX_CELL, max(MIN_CELL, int(s.get("cell", DEFAULT_CELL))))
         self.on_top = bool(s.get("on_top", False))
         self.hidden = set(s.get("hidden", []))  # app ids left out of the rotation
+        self.framed = bool(s.get("frame", True))  # wooden frame around the screen
+        self.frame_img = None
+        self.frame_cell = 0
         self.tray_mode = bool(s.get("tray", False))  # icon in the notification area instead of the taskbar
         self.tray = None
         self.tray_events = queue.Queue()
@@ -576,7 +612,7 @@ class Mirror:
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         if not (-W * self.cell + 60 < x < sw - 60 and 0 <= y < sh - 60):  # saved on a monitor that is gone
             x, y = 200, 200
-        root.geometry("%dx%d+%d+%d" % (W * self.cell, H * self.cell, x, y))
+        root.geometry("%dx%d+%d+%d" % (self.window_size() + (x, y)))
 
         self.screen = tk.Label(root, bd=0, bg="#000000", fg=BAR_DIM, text="Rendering the first app...")
         self.screen.place(x=0, y=0, relwidth=1, relheight=1)
@@ -598,6 +634,7 @@ class Mirror:
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
         self.tray_btn = button("", self.toggle_tray, side="right")
+        self.frame_btn = button("", self.toggle_frame, side="right")
         button("Settings", self.open_settings, side="right")
         button("Apps", self.open_apps, side="right")
 
@@ -647,7 +684,8 @@ class Mirror:
 
     def save_settings(self):
         data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top,
-                "hidden": sorted(self.hidden), "alpha": self.alpha, "tray": self.tray_mode}
+                "hidden": sorted(self.hidden), "alpha": self.alpha, "tray": self.tray_mode,
+                "frame": self.framed}
         try:
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -742,6 +780,17 @@ class Mirror:
                 self.grip.place_forget()
         self.root.after(120, self.watch_pointer)
 
+    def window_size(self):
+        margin = frame_margin(self.cell) if self.framed else 0
+        return W * self.cell + 2 * margin, H * self.cell + 2 * margin
+
+    def toggle_frame(self):
+        self.framed = not self.framed
+        self.update_top_label()
+        self.root.geometry("%dx%d" % self.window_size())
+        self.draw()
+        self.save_settings()
+
     def move_start(self, e):
         self.drag = (e.x_root - self.root.winfo_x(), e.y_root - self.root.winfo_y())
 
@@ -754,14 +803,15 @@ class Mirror:
 
     def resize_drag(self, e):
         width = e.x_root - self.root.winfo_x()
-        self.set_cell(round(width / W))
+        extra = 2 * (FRAME_WOOD + FRAME_GAP) if self.framed else 0  # the frame's share, in Tidbyt pixels
+        self.set_cell(round(width / (W + extra)))
 
     def set_cell(self, cell, save=False):
         cell = min(MAX_CELL, max(MIN_CELL, int(cell)))
         if cell == self.cell:
             return
         self.cell = cell
-        self.root.geometry("%dx%d" % (W * cell, H * cell))
+        self.root.geometry("%dx%d" % self.window_size())
         self.draw()
         if save:
             self.save_settings()
@@ -775,6 +825,7 @@ class Mirror:
     def update_top_label(self):
         self.top_btn.configure(text="On top ✓" if self.on_top else "On top", fg=BAR_FG if self.on_top else BAR_DIM)
         self.tray_btn.configure(text="Tray ✓" if self.tray_mode else "Tray", fg=BAR_FG if self.tray_mode else BAR_DIM)
+        self.frame_btn.configure(text="Frame ✓" if self.framed else "Frame", fg=BAR_FG if self.framed else BAR_DIM)
 
     def set_alpha(self, value):
         self.alpha = min(100, max(20, int(float(value))))
@@ -1088,6 +1139,13 @@ class Mirror:
             brightest = ImageChops.lighter(ImageChops.lighter(r, g), b)
             unlit = brightest.point(lambda v: 255 if v < OFF_BELOW else 0).resize(big.size, Image.NEAREST)
             big = Image.composite(self.off, big, unlit)
+        if self.framed:
+            if self.frame_cell != self.cell:
+                self.frame_img, self.frame_cell = frame_image(self.cell), self.cell
+            margin = frame_margin(self.cell)
+            framed = self.frame_img.copy()
+            framed.paste(big, (margin, margin))
+            big = framed
         self.photo = ImageTk.PhotoImage(big)
         self.screen.configure(image=self.photo, text="")
 
