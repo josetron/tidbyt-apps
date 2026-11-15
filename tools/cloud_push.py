@@ -3,7 +3,7 @@ Renders Tidbyt apps and pushes them to the device. Run by GitHub Actions
 (.github/workflows/tidbyt.yml), so no home PC is needed. Python 3 standard library only.
 
   python tools/cloud_push.py market [--hourly|--force]   MarketPulse + MarketPulse Stocks
-  python tools/cloud_push.py weather            Weather Now, Weather Forecast, Pixel Museum
+  python tools/cloud_push.py weather            Weather Now, Weather Forecast, Pixel Museum, Pixel Aquarium
 
 Environment:
   TIDBYT_API_TOKEN, TIDBYT_DEVICE_ID   (GitHub secrets; never stored in the repo)
@@ -43,6 +43,7 @@ WEATHER_APPS = [
     ("apps/weather_now/weather_now.star", "weathernow"),
     ("apps/weather_forecast/weather_forecast.star", "weatherforecast"),
     ("apps/pixel_museum/pixel_museum.star", "pixelmuseum"),
+    ("apps/pixel_aquarium/pixel_aquarium.star", "pixelaquarium"),
 ]
 
 

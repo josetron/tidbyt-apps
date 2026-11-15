@@ -8,7 +8,7 @@ on:
     - cron: "1-59/5 8-23 * * 1-5"   # market, every 5 min (script keeps 04:00-20:00 ET weekdays)
     - cron: "1-59/5 0 * * 2-6"      # market, evening hour that falls after midnight UTC in winter
     - cron: "33 * * * *"            # market hourly (nights, weekends: CLOSED cards stay current)
-    - cron: "7-59/15 * * * *"       # weather + Pixel Museum, every 15 min
+    - cron: "7-59/15 * * * *"       # weather, Pixel Museum, Pixel Aquarium: every 15 min
   workflow_dispatch:
     inputs:
       group:

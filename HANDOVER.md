@@ -29,6 +29,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | `apps/weather_forecast` | `weatherforecast` | yes | Location title card → 3-day forecast with mini animated icons → 24 h temperature/rain chart that draws itself |
 | `apps/mona_lisa` | `monalisa` | no (static) | The user's pixel-art Mona Lisa mockup converted to 64×32 (`mockup.webp` → `mona_lisa_64x32.png`) |
 | `apps/pixel_museum` | `pixelmuseum` | yes | Gallery of 10 public-domain paintings as pixel art; 3 per showing (4 s each), transitions fade / slide / wipe / pixel-dissolve / random; each refresh moves to the next 3 |
+| `apps/pixel_aquarium` | `pixelaquarium` | yes | Animated fish tank: fish both ways at 4 depths, swaying seaweed, bubbles, a crab, a treasure chest that opens; day/night lighting by local time (jellyfish at night); new fish mix each refresh. Seamless 15.0 s loop |
 | `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
 | `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
@@ -57,7 +58,7 @@ Commons (public domain), with the downloaded originals in `apps/pixel_museum/sou
 
 `.claude/launch.json` defines emulator servers for Claude's browser preview
 (`hello_world` :8080, `weather_now` :8081, `mona_lisa` :8082, `pixel_museum` :8083,
-`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
+`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
 
 ---
 
@@ -131,6 +132,9 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
   `animation.Transformation` translate works; `render.Animation` loops shorter children
   (frame index modulo); `render.Image` accepts SVG text, which the weather apps use to
   draw their icons procedurally.
+- **SVG images lose transparency:** the empty parts of an SVG `render.Image` come out opaque black. That's fine on
+  a black screen, but it blacks out anything underneath. For sprites over a background, build them from `render.Box`
+  runs (see `sprite()` in pixel_aquarium). An empty Box stays see-through.
 - `pixlet lint` flags formatting: run `pixlet format <file>` first. `pixlet check` needs
   `manifest.yaml`, and its `summary` must start with a capital letter (max 27 chars).
 

@@ -1,0 +1,8 @@
+---
+id: pixel-aquarium
+name: Pixel Aquarium
+summary: Animated pixel fish tank
+desc: A living pixel-art aquarium. Fish swim at different depths and speeds, seaweed sways, bubbles rise, a crab patrols the sand and a treasure chest releases bubbles. Day and night lighting follows local time, and each refresh brings a new mix of fish.
+author: Tidbyt Dev
+fileName: pixel_aquarium.star
+packageName: pixelaquarium

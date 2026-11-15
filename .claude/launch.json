@@ -82,6 +82,18 @@
         "apps/marketpulse_stocks/marketpulse_stocks.star"
       ],
       "port": 8086
+    },
+    {
+      "name": "pixel_aquarium",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--watch",
+        "--port",
+        "8087",
+        "apps/pixel_aquarium/pixel_aquarium.star"
+      ],
+      "port": 8087
     }
   ]
 }
