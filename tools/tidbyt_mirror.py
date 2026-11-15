@@ -7,10 +7,12 @@ Tidbyt Mirror: a frameless desktop window that plays the same apps as the Tidbyt
 Using the window
   - Drag anywhere on the picture to move it.
   - Drag the bottom-right corner, or turn the mouse wheel, to resize it (always 2:1).
-  - Hover over it for the menu: previous / next app, pause, opacity slider, store apps on/off,
+  - Hover over it for the menu: previous / next app, pause, opacity slider, Apps, Settings,
     keep on top, close. It disappears
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
+  - "Apps" in the menu lists every app: untick one to leave it out of the rotation, "Show" jumps
+    to it, "Settings" opens its options.
   - "Settings" in the menu opens the options of the app on screen (the same fields the phone
     app's Edit screen has). They are saved in %USERPROFILE%\\.tidbyt\\mirror_settings.json, outside
     this (public) repo because they can be personal, and only affect the mirror, not the device.
@@ -24,7 +26,7 @@ images, so this renders the apps with Pixlet and plays them in the device's orde
     kept in .cache/community/ by --fetch-store. They run with DEFAULT settings plus the location
     below, because the API does not expose the settings chosen in the phone app. Apps that are
     not open source (clock, news, photo, spotify...) or need an API key are left out.
-    The "Store" button in the menu turns them on and off.
+    "Only my apps" in the Apps list leaves them all out.
 Nothing is pushed to the device. Rendered images go to .cache/mirror/ (git-ignored).
 
 Needs: pixlet on PATH, Python with tkinter and Pillow. Optional: the Tidbyt token in
@@ -391,7 +393,8 @@ class Mirror:
         s = self.load_settings()
         self.cell = min(MAX_CELL, max(MIN_CELL, int(s.get("cell", DEFAULT_CELL))))
         self.on_top = bool(s.get("on_top", False))
-        self.store = bool(s.get("store", True))
+        self.hidden = set(s.get("hidden", []))  # app ids left out of the rotation
+        self.apps_win = None
         self.alpha = min(100, max(20, int(s.get("alpha", 100))))  # window opacity in percent
         self.paused = False
         self.order = []      # ids that can be shown right now
@@ -438,8 +441,8 @@ class Mirror:
         self.pause_btn = button("Pause", self.toggle_pause)
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
-        self.store_btn = button("", self.toggle_store, side="right")
         button("Settings", self.open_settings, side="right")
+        button("Apps", self.open_apps, side="right")
 
         # transparency slider: 20 % (mostly see-through) to 100 % (solid)
         self.alpha_scale = tk.Scale(
@@ -487,7 +490,7 @@ class Mirror:
 
     def save_settings(self):
         data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top,
-                "store": self.store, "alpha": self.alpha}
+                "hidden": sorted(self.hidden), "alpha": self.alpha}
         try:
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -563,29 +566,91 @@ class Mirror:
 
     def update_top_label(self):
         self.top_btn.configure(text="On top ✓" if self.on_top else "On top", fg=BAR_FG if self.on_top else BAR_DIM)
-        self.store_btn.configure(text="Store ✓" if self.store else "Store", fg=BAR_FG if self.store else BAR_DIM)
 
     def set_alpha(self, value):
         self.alpha = min(100, max(20, int(float(value))))
         self.root.attributes("-alpha", self.alpha / 100.0)
 
-    def toggle_store(self):
-        self.store = not self.store
-        self.update_top_label()
-        self.save_settings()
-        self.poll_once()
-        if self.current not in self.order:
-            self.step(1)
+    # -- apps list ---------------------------------------------------------
+
+    def open_apps(self):
+        """A window listing every app: tick = in the rotation, Show = jump to it, Settings = its options."""
+        if self.apps_win is not None:
+            self.apps_win.lift()
+            return
+        win = self.apps_win = tk.Toplevel(self.root)
+        win.title("Tidbyt Mirror apps")
+        win.attributes("-topmost", True)
+        win.geometry("460x560+%d+%d" % (self.root.winfo_x() + 30, self.root.winfo_y() + 50))
+
+        def closed():
+            self.apps_win = None
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", closed)
+
+        with lock:
+            rows = [dict(apps[k]) for k in order if apps[k]["on_device"]]
+        variables = {}
+
+        def apply():
+            self.hidden = {k for k, v in variables.items() if not v.get()}
+            self.save_settings()
+            self.poll_once()
+            if self.current not in self.order and self.order:
+                self.step(1)
+
+        def set_all(choose):
+            for row in rows:
+                variables[row["id"]].set(choose(row))
+            apply()
+
+        top = ttk.Frame(win, padding=(10, 8))
+        top.pack(fill="x")
+        ttk.Label(top, text="Ticked apps play in the mirror.").pack(side="left")
+        ttk.Button(top, text="Only my apps", command=lambda: set_all(lambda r: not r["store"])).pack(side="right", padx=2)
+        ttk.Button(top, text="All", command=lambda: set_all(lambda r: True)).pack(side="right", padx=2)
+
+        canvas = tk.Canvas(win, highlightthickness=0)
+        bar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(canvas, padding=(10, 0))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        inner.columnconfigure(0, weight=1)
+
+        for n, row in enumerate(rows):
+            key = row["id"]
+            var = variables[key] = tk.BooleanVar(value=key not in self.hidden)
+            label = row["name"] + ("" if row["store"] else "  (mine)")
+            if row["version"] == 0:
+                label += "  - not working yet" if row["error"] else "  - rendering..."
+            ttk.Checkbutton(inner, text=label, variable=var, command=apply).grid(row=n, column=0, sticky="w")
+            ttk.Button(inner, text="Show", width=6, command=lambda k=key: self.jump_to(k)).grid(row=n, column=1, padx=2, pady=1)
+            ttk.Button(inner, text="Settings", width=9,
+                       command=lambda k=key: self.open_settings(k)).grid(row=n, column=2, padx=2, pady=1)
+
+    def jump_to(self, key):
+        with lock:
+            ready = apps[key]["version"] > 0
+        if ready:
+            self.show(key)
 
     # -- settings form -----------------------------------------------------
 
-    def open_settings(self):
-        if self.current is None:
-            return
+    def open_settings(self, key=None):
         if self.settings_win is not None:
             self.settings_win.lift()
             return
-        key = self.current
+        if key is None:
+            key = self.current
+        elif key != self.current:
+            self.jump_to(key)  # put the app being edited on screen
+        if key is None:
+            return
         with lock:
             name = apps[key]["name"]
         was_paused = self.paused
@@ -729,7 +794,7 @@ class Mirror:
     def poll_once(self):
         with lock:
             self.order = [k for k in order if apps[k]["version"] > 0 and apps[k]["on_device"]
-                          and (self.store or not apps[k]["store"])]
+                          and k not in self.hidden]
 
     def poll(self):
         """Pick up newly rendered apps."""
