@@ -11,6 +11,8 @@ Using the window
     keep on top, close. It disappears
     3 seconds after the mouse leaves. Esc also closes the window.
   - Position, size and "keep on top" are remembered in .cache/mirror/window.json.
+  - "Tray" in the menu moves the window's button from the taskbar to the notification area
+    (system tray): click the tray icon to hide or show the window, right-click it for a menu.
   - "Apps" in the menu lists every app: untick one to leave it out of the rotation, "Show" jumps
     to it, "Settings" opens its options.
   - "Settings" in the menu opens the options of the app on screen (the same fields the phone
@@ -36,6 +38,7 @@ a TMDB key in %USERPROFILE%\\.tidbyt\\tmdb_api_key.txt (Now Playing; without it,
 
 import json
 import os
+import queue
 import socket
 import subprocess
 import sys
@@ -361,6 +364,115 @@ def worker():
 # Window
 # ---------------------------------------------------------------------------
 
+def tray_icon_file():
+    """A small LED-matrix icon for the notification area, made once with Pillow."""
+    path = os.path.join(OUT, "tray.ico")
+    if not os.path.exists(path):
+        size, dots = 64, ["#ff7a1a", "#f4f4f4", "#33dd66", "#4da6ff"]
+        im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rounded_rectangle((2, 12, size - 3, size - 13), radius=8, fill="#101418", outline="#5a6470", width=2)
+        for row in range(2):
+            for col in range(4):
+                x, y = 10 + col * 12, 22 + row * 12
+                d.ellipse((x, y, x + 8, y + 8), fill=dots[(col + row) % len(dots)])
+        im.save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48)])
+    return path
+
+
+class TrayIcon:
+    """An icon in the Windows notification area, made with Shell_NotifyIcon through ctypes (no
+    extra packages). It lives on its own thread with a hidden message window; clicks are put on
+    `events` ("click" = left button, "menu" = right button) for the Tk thread to pick up."""
+
+    def __init__(self, icon_path, tip, events):
+        self.icon_path, self.tip, self.events = icon_path, tip, events
+        self.hwnd = None
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        if self.hwnd:
+            import ctypes
+            ctypes.windll.user32.PostMessageW(self.hwnd, 0x8000 + 2, 0, 0)
+            self.thread.join(2)
+
+    def run(self):
+        import ctypes
+        from ctypes import wintypes
+
+        user32, shell32, kernel32 = ctypes.windll.user32, ctypes.windll.shell32, ctypes.windll.kernel32
+        LRESULT = ctypes.c_ssize_t
+        WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+        TRAY_MSG, QUIT_MSG = 0x8000 + 1, 0x8000 + 2  # WM_APP + n
+
+        class WNDCLASSW(ctypes.Structure):
+            _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", WNDPROC), ("cbClsExtra", ctypes.c_int),
+                        ("cbWndExtra", ctypes.c_int), ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HANDLE),
+                        ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HANDLE),
+                        ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+        class NOTIFYICONDATAW(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("hWnd", wintypes.HWND), ("uID", wintypes.UINT),
+                        ("uFlags", wintypes.UINT), ("uCallbackMessage", wintypes.UINT), ("hIcon", wintypes.HANDLE),
+                        ("szTip", wintypes.WCHAR * 128), ("dwState", wintypes.DWORD), ("dwStateMask", wintypes.DWORD),
+                        ("szInfo", wintypes.WCHAR * 256), ("uVersion", wintypes.UINT),
+                        ("szInfoTitle", wintypes.WCHAR * 64), ("dwInfoFlags", wintypes.DWORD),
+                        ("guidItem", ctypes.c_byte * 16), ("hBalloonIcon", wintypes.HANDLE)]
+
+        user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        user32.DefWindowProcW.restype = LRESULT
+        user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                           ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HWND,
+                                           wintypes.HANDLE, wintypes.HINSTANCE, wintypes.LPVOID]
+        user32.CreateWindowExW.restype = wintypes.HWND
+        user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int,
+                                      wintypes.UINT]
+        user32.LoadImageW.restype = wintypes.HANDLE
+        user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
+        shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW)]
+
+        nid = NOTIFYICONDATAW()
+
+        def proc(hwnd, msg, wparam, lparam):
+            if msg == TRAY_MSG:
+                if lparam == 0x0202:    # WM_LBUTTONUP
+                    self.events.put("click")
+                elif lparam == 0x0205:  # WM_RBUTTONUP
+                    self.events.put("menu")
+                return 0
+            if msg == QUIT_MSG:
+                shell32.Shell_NotifyIconW(2, ctypes.byref(nid))  # NIM_DELETE
+                user32.PostQuitMessage(0)
+                return 0
+            return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+        self.proc = WNDPROC(proc)  # keep a reference: Windows calls it for as long as the window lives
+        hinst = kernel32.GetModuleHandleW(None)
+        cls = WNDCLASSW()
+        cls.lpfnWndProc, cls.hInstance, cls.lpszClassName = self.proc, hinst, "TidbytMirrorTray%d" % id(self)
+        if not user32.RegisterClassW(ctypes.byref(cls)):
+            log("tray icon: could not register the window class")
+            return
+        hwnd = user32.CreateWindowExW(0, cls.lpszClassName, "Tidbyt Mirror tray", 0, 0, 0, 0, 0, None, None, hinst, None)
+        nid.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
+        nid.hWnd, nid.uID = hwnd, 1
+        nid.uFlags = 0x1 | 0x2 | 0x4  # NIF_MESSAGE | NIF_ICON | NIF_TIP
+        nid.uCallbackMessage = TRAY_MSG
+        nid.hIcon = user32.LoadImageW(None, self.icon_path, 1, 0, 0, 0x10 | 0x40)  # IMAGE_ICON, from file, default size
+        nid.szTip = self.tip
+        if not shell32.Shell_NotifyIconW(0, ctypes.byref(nid)):  # NIM_ADD
+            log("tray icon: Windows refused the icon")
+        self.hwnd = hwnd
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+        self.hwnd = None
+
+
 def load_frames(iid):
     """[(64x32 RGB image, milliseconds)] for one app."""
     frames = []
@@ -394,6 +506,9 @@ class Mirror:
         self.cell = min(MAX_CELL, max(MIN_CELL, int(s.get("cell", DEFAULT_CELL))))
         self.on_top = bool(s.get("on_top", False))
         self.hidden = set(s.get("hidden", []))  # app ids left out of the rotation
+        self.tray_mode = bool(s.get("tray", False))  # icon in the notification area instead of the taskbar
+        self.tray = None
+        self.tray_events = queue.Queue()
         self.apps_win = None
         self.alpha = min(100, max(20, int(s.get("alpha", 100))))  # window opacity in percent
         self.paused = False
@@ -441,6 +556,7 @@ class Mirror:
         self.pause_btn = button("Pause", self.toggle_pause)
         button("✕", self.close, side="right")
         self.top_btn = button("", self.toggle_top, side="right")
+        self.tray_btn = button("", self.toggle_tray, side="right")
         button("Settings", self.open_settings, side="right")
         button("Apps", self.open_apps, side="right")
 
@@ -490,7 +606,7 @@ class Mirror:
 
     def save_settings(self):
         data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "cell": self.cell, "on_top": self.on_top,
-                "hidden": sorted(self.hidden), "alpha": self.alpha}
+                "hidden": sorted(self.hidden), "alpha": self.alpha, "tray": self.tray_mode}
         try:
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -500,7 +616,8 @@ class Mirror:
     # -- window behaviour --------------------------------------------------
 
     def show_in_taskbar(self):
-        """A frameless Tk window has no taskbar button on Windows unless asked for."""
+        """Puts the window's button in the taskbar, or (tray mode) takes it out and shows an icon
+        in the notification area instead. A frameless Tk window has no taskbar button by itself."""
         if os.name != "nt":
             return
         try:
@@ -509,15 +626,65 @@ class Mirror:
             self.root.update_idletasks()
             hwnd = user32.GetParent(self.root.winfo_id())
             style = user32.GetWindowLongW(hwnd, -20)           # GWL_EXSTYLE
-            style = (style & ~0x00000080) | 0x00040000         # not a tool window; an app window
+            if self.tray_mode:
+                style = (style & ~0x00040000) | 0x00000080     # a tool window: no taskbar button
+            else:
+                style = (style & ~0x00000080) | 0x00040000     # an app window: taskbar button
             user32.SetWindowLongW(hwnd, -20, style)
-            self.root.withdraw()
+            self.root.withdraw()                               # the change applies when it is shown again
             self.root.after(20, self.root.deiconify)
         except Exception as e:
             log("taskbar button not set: %s" % e)
+        if self.tray_mode and self.tray is None:
+            try:
+                self.tray = TrayIcon(tray_icon_file(), "Tidbyt Mirror", self.tray_events)
+            except Exception as e:
+                log("tray icon failed: %s" % e)
+        elif not self.tray_mode and self.tray is not None:
+            self.tray.stop()
+            self.tray = None
+
+    def toggle_tray(self):
+        self.tray_mode = not self.tray_mode
+        self.update_top_label()
+        self.save_settings()
+        self.show_in_taskbar()
+
+    def toggle_visible(self):
+        if self.root.state() == "withdrawn":
+            self.root.deiconify()
+            self.root.lift()
+        else:
+            self.root.withdraw()
+
+    def tray_menu(self):
+        hidden = self.root.state() == "withdrawn"
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(label="Show window" if hidden else "Hide window", command=self.toggle_visible)
+        menu.add_command(label="Apps...", command=self.open_apps)
+        menu.add_command(label="Back to the taskbar", command=self.toggle_tray)
+        menu.add_separator()
+        menu.add_command(label="Close Tidbyt Mirror", command=self.close)
+        x, y = self.root.winfo_pointerxy()
+        try:
+            menu.tk_popup(x, y - 5)
+        finally:
+            menu.grab_release()
+
+    def handle_tray_events(self):
+        try:
+            while True:
+                event = self.tray_events.get_nowait()
+                if event == "click":
+                    self.toggle_visible()
+                elif event == "menu":
+                    self.tray_menu()
+        except queue.Empty:
+            pass
 
     def watch_pointer(self):
         """Show the menu while the mouse is over the window (Enter/Leave events flicker on child widgets)."""
+        self.handle_tray_events()
         px, py = self.root.winfo_pointerxy()
         x, y = self.root.winfo_rootx(), self.root.winfo_rooty()
         inside = x <= px < x + self.root.winfo_width() and y <= py < y + self.root.winfo_height()
@@ -566,6 +733,7 @@ class Mirror:
 
     def update_top_label(self):
         self.top_btn.configure(text="On top ✓" if self.on_top else "On top", fg=BAR_FG if self.on_top else BAR_DIM)
+        self.tray_btn.configure(text="Tray ✓" if self.tray_mode else "Tray", fg=BAR_FG if self.tray_mode else BAR_DIM)
 
     def set_alpha(self, value):
         self.alpha = min(100, max(20, int(float(value))))
@@ -787,6 +955,9 @@ class Mirror:
 
     def close(self):
         self.save_settings()
+        if self.tray is not None:
+            self.tray.stop()  # take the icon out of the notification area
+            self.tray = None
         self.root.destroy()
 
     # -- playback ----------------------------------------------------------
