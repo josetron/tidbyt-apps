@@ -10,7 +10,7 @@ Builds the data snapshot for the Now Playing app (apps/now_playing).
 - Posters are fetched small, cropped to 2:3 and downscaled to 21x32 with Pillow, which looks far
   better than Pixlet's own scaling, then stored as base64 PNG (about 1-2 KB each).
 
-Output: {"fetched_at": unix, "movies": [{title, release, runtime, cert, genres, imdb, votes, poster}]}
+Output: {"fetched_at": unix, "movies": [{title, release, runtime, cert, genres, imdb, votes, poster, backdrop}]}
 """
 
 import base64
@@ -27,6 +27,8 @@ TMDB = "https://api.themoviedb.org/3"
 POSTER_URL = "https://image.tmdb.org/t/p/w185%s"
 RATINGS_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz"
 POSTER_W, POSTER_H = 21, 32
+BACKDROP_W, BACKDROP_H = 80, 40  # a little larger than the screen so it can pan
+BACKDROP_URL = "https://image.tmdb.org/t/p/w300%s"
 MAX_MOVIES = 12
 
 
@@ -81,6 +83,7 @@ def details(movie_id):
         "runtime": d.get("runtime") or 0,
         "cert": cert,
         "genres": [g["name"] for g in d.get("genres", [])][:2],
+        "backdrop_path": d.get("backdrop_path") or "",
     }
 
 
@@ -105,26 +108,43 @@ def imdb_ratings(ids, cache_path):
     return found
 
 
-def poster_png(poster_path):
+def shrink(data, w, h, top_bias=0.5, gamma=0.8):
+    """Crop to w:h and shrink for LEDs: blur slightly, average each cell (no ringing),
+    boost colour and contrast, and lift the darks (Gen 1 LEDs swallow dark tones)."""
     from PIL import Image, ImageEnhance, ImageFilter
 
-    im = Image.open(io.BytesIO(get(POSTER_URL % poster_path))).convert("RGB")
-    # crop to exactly POSTER_W:POSTER_H, then downscale in two steps for crisper detail
-    w, h = im.size
-    target = POSTER_W / POSTER_H
-    if w / h > target:
-        nw = int(h * target)
-        im = im.crop(((w - nw) // 2, 0, (w - nw) // 2 + nw, h))
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    iw, ih = im.size
+    target = w / h
+    if iw / ih > target:
+        nw = int(ih * target)
+        im = im.crop(((iw - nw) // 2, 0, (iw - nw) // 2 + nw, ih))
     else:
-        nh = int(w / target)
-        im = im.crop((0, (h - nh) // 2, w, (h - nh) // 2 + nh))
-    im = im.resize((POSTER_W * 4, POSTER_H * 4), Image.LANCZOS).resize((POSTER_W, POSTER_H), Image.LANCZOS)
-    im = im.filter(ImageFilter.UnsharpMask(radius=1, percent=60, threshold=2))
-    im = ImageEnhance.Color(im).enhance(1.2)
-    im = ImageEnhance.Contrast(im).enhance(1.1)
+        nh = int(iw / target)
+        y = int((ih - nh) * top_bias)
+        im = im.crop((0, y, iw, y + nh))
+    im = im.filter(ImageFilter.GaussianBlur(im.width / w * 0.35)).resize((w, h), Image.BOX)
+    im = ImageEnhance.Color(im).enhance(1.45)
+    im = ImageEnhance.Contrast(im).enhance(1.25)
+    lut = [int(255 * ((i / 255) ** gamma)) for i in range(256)]
+    return im.point(lut * 3)
+
+
+def b64(im, fmt, **kw):
     buf = io.BytesIO()
-    im.save(buf, "PNG", optimize=True)
+    im.save(buf, fmt, **kw)
     return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def poster_png(poster_path):
+    return b64(shrink(get(POSTER_URL % poster_path), POSTER_W, POSTER_H), "PNG", optimize=True)
+
+
+def backdrop_jpg(backdrop_path):
+    if not backdrop_path:
+        return ""
+    im = shrink(get(BACKDROP_URL % backdrop_path), BACKDROP_W, BACKDROP_H, top_bias=0.4, gamma=0.85)
+    return b64(im, "JPEG", quality=90)
 
 
 def build(cache_dir):
@@ -144,6 +164,7 @@ def build(cache_dir):
             "imdb": rating,
             "votes": votes,
             "poster": poster_png(m["poster_path"]),
+            "backdrop": backdrop_jpg(e["backdrop_path"]),
         })
     return {"fetched_at": int(time.time()), "movies": out}
 

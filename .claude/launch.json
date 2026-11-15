@@ -94,6 +94,17 @@
         "apps/pixel_aquarium/pixel_aquarium.star"
       ],
       "port": 8087
+    },
+    {
+      "name": "now_playing",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8088",
+        "apps/now_playing/preview/now_playing_preview.star"
+      ],
+      "port": 8088
     }
   ]
 }

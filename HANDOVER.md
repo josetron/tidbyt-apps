@@ -30,7 +30,7 @@ _Last updated: 2026-11-13 (moved to GitHub Actions)._
 | `apps/mona_lisa` | `monalisa` | no (static) | The user's pixel-art Mona Lisa mockup converted to 64×32 (`mockup.webp` → `mona_lisa_64x32.png`) |
 | `apps/pixel_museum` | `pixelmuseum` | yes | Gallery of 10 public-domain paintings as pixel art; 3 per showing (4 s each), transitions fade / slide / wipe / pixel-dissolve / random; each refresh moves to the next 3 |
 | `apps/pixel_aquarium` | `pixelaquarium` | yes | Animated fish tank: fish both ways at 4 depths, swaying seaweed, bubbles, a crab, a treasure chest that opens; day/night lighting by local time (jellyfish at night); new fish mix each refresh. Seamless 15.0 s loop |
-| `apps/now_playing` | `nowplaying` | yes (hourly) | Movies now in US theaters (TMDB): poster, title, rating/runtime, red NEW tag for the past week, IMDb score counting up. 2 movies × 7.5 s per showing, next pair each hour. Snapshot built by `tools/movies_snapshot.py` (Pillow downscales posters to 21×32) |
+| `apps/now_playing` | `nowplaying` | yes (hourly) | Movies now in US theaters (TMDB). Each movie gets 7.5 s: a 3 s panning full-screen film still with the title, then the poster card (title, rating/runtime, red NEW tag for the past week, IMDb score counting up). 2 movies per showing; the cloud sends only the hour's pair. Snapshot built by `tools/movies_snapshot.py` (Pillow: blur + box-average, colour boost, lifted darks). Emulator: `python tools/make_preview.py`, then the `now_playing` launch entry (:8088) |
 | `apps/marketpulse` | `marketpulse` | yes | SPY/QQQ/DIA (labelled ETFs): overview with arrows, %/price and sparklines, then a detail chart. See `apps/marketpulse/DESIGN.md` |
 | `apps/marketpulse_stocks` | `marketpulsestocks` | yes | 6 stocks with pixel-art logos (AAPL, MSFT, NVDA, AMZN, GOOGL, HPQ; configurable), 3 cards × 5 s per refresh, alternating sets |
 
@@ -59,7 +59,7 @@ Commons (public domain), with the downloaded originals in `apps/pixel_museum/sou
 
 `.claude/launch.json` defines emulator servers for Claude's browser preview
 (`hello_world` :8080, `weather_now` :8081, `mona_lisa` :8082, `pixel_museum` :8083,
-`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
+`weather_forecast` :8084, `marketpulse` :8085, `marketpulse_stocks` :8086, `pixel_aquarium` :8087, `now_playing` :8088 (preview copy)). Manually: `pixlet serve --watch apps/<app>/<app>.star`, then open http://localhost:8080.
 
 ---
 
@@ -140,6 +140,9 @@ The Tidbyt apps are pushed from GitHub's servers, so no PC has to stay on.
 - **SVG images lose transparency:** the empty parts of an SVG `render.Image` come out opaque black. That's fine on
   a black screen, but it blacks out anything underneath. For sprites over a background, build them from `render.Box`
   runs (see `sprite()` in pixel_aquarium). An empty Box stays see-through.
+- **`pixlet serve --watch` misses edits on the Google Drive folder.** Restart the server after editing.
+- **The emulator only passes schema fields** from its URL/form to the app, so it can't feed large data (use an
+  embedded preview copy like `tools/make_preview.py`).
 - `pixlet lint` flags formatting: run `pixlet format <file>` first. `pixlet check` needs
   `manifest.yaml`, and its `summary` must start with a capital letter (max 27 chars).
 

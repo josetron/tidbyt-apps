@@ -177,8 +177,12 @@ def run_movies():
         log("using the last good movie list")
     else:
         return False
+    # Pass only this hour's pair: the stills make the full list too big for one config value
+    movies = snap["movies"]
+    start = (int(time.time()) // 3600 * 2) % len(movies)
+    page = dict(snap, movies=(movies + movies)[start:start + 2])
     return render_and_push("apps/now_playing/now_playing.star", "nowplaying",
-                           {"snapshot": json.dumps(snap, separators=(",", ":"))})
+                           {"snapshot": json.dumps(page, separators=(",", ":")), "page": "0"})
 
 
 def run_weather():

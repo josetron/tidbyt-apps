@@ -4,3 +4,4 @@
 !apps/pixel_museum/source/*.webp
 __pycache__/
 desktop.ini
+apps/*/preview/

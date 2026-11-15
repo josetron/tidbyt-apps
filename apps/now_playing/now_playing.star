@@ -2,11 +2,12 @@
 Applet: Now Playing
 Summary: Movies in theaters now
 Description: Movies now playing in US theaters for Tidbyt Gen 1: poster, title, rating and
-runtime, and the IMDb rating. Two movies per showing (7.5 s each); every refresh moves on to the
+runtime, and the IMDb rating. Two movies per showing, 7.5 s each: a panning full-screen still
+from the film with its title, then the poster card. Every refresh moves on to the
 next two. Data: TMDB (this product uses the TMDB API but is not endorsed or certified by TMDB)
 and IMDb's public ratings dataset, prepared by tools/movies_snapshot.py and passed in as the
 `snapshot` config value.
-Preview switch: ?page=<n> to pick a pair.
+Preview: tools/make_preview.py builds apps/now_playing/preview/ with sample data embedded.
 """
 
 load("encoding/base64.star", "base64")
@@ -19,6 +20,7 @@ load("time.star", "time")
 DELAY_MS = 100
 CARD_FRAMES = 75  # 2 cards x 7.5 s = 15.0 s (the Gen 1 limit)
 PER_PAGE = 2
+SCENE_FRAMES = 30  # 3 s film still, then 4.5 s poster card
 ROTATE_EVERY_SECONDS = 60 * 60
 
 POSTER_W = 21
@@ -121,7 +123,28 @@ def is_new(movie, now):
 def new_tag():
     return render.Box(width = 13, height = 7, color = NEW_RED, child = render.Text("NEW", font = SMALL, color = WHITE))
 
-def card(movie, now):
+def scene_frames(movie):
+    # Full-screen still from the film, panning slowly, with the title along the bottom
+    still = render.Image(src = base64.decode(movie["backdrop"]), width = 80, height = 40)
+    title = movie["title"].upper()
+    text_w = 4 * len(title)
+    overflow = max(0, text_w - 62)
+    frames = []
+    for f in range(SCENE_FRAMES):
+        p = f / (SCENE_FRAMES - 1)
+        x = -int(math.round(16 * p))
+        y = -2 - int(math.round(4 * p))
+
+        # long titles scroll once, after a short pause
+        shift = int(math.round(overflow * min(1.0, max(0.0, (f - 6) / (SCENE_FRAMES - 12)))))
+        frames.append(render.Stack(children = [
+            render.Padding(pad = (x, y, 0, 0), child = still),
+            render.Padding(pad = (0, 25, 0, 0), child = render.Box(width = 64, height = 7, color = "#000000b4")),
+            render.Padding(pad = (1 - shift, 26, 0, 0), child = render.Text(title, font = SMALL, color = WHITE)),
+        ]))
+    return frames
+
+def info_frames(movie, now, count):
     poster = render.Image(src = base64.decode(movie["poster"]), width = POSTER_W, height = 32)
     lines = wrap_title(movie["title"], TEXT_W // 4, 3)  # tom-thumb is 4 px per character
 
@@ -134,7 +157,7 @@ def card(movie, now):
     fresh = is_new(movie, now)
 
     frames = []
-    for f in range(CARD_FRAMES):
+    for f in range(count):
         # poster slides in from the left over the first 0.6 s
         slide = min(1.0, (f + 1) / 6.0)
         x = int(math.round(-POSTER_W * (1 - ease_out(slide))))
@@ -147,15 +170,20 @@ def card(movie, now):
                 rating_row(movie, f),
             ])),
         ]))
-    return render.Animation(children = frames)
+    return frames
+
+def card(movie, now):
+    scene = scene_frames(movie) if movie.get("backdrop") else []
+    return render.Animation(children = scene + info_frames(movie, now, CARD_FRAMES - len(scene)))
 
 def message(text):
     return render.Root(child = render.Box(child = render.WrappedText(text, font = SMALL, color = IMDB_YELLOW, align = "center", width = 62)))
 
 def main(config):
-    if not config.str("snapshot"):
+    raw = config.str("snapshot")
+    if not raw:
         return message("Now Playing: no movie data yet")
-    movies = json.decode(config.str("snapshot")).get("movies", [])
+    movies = json.decode(raw).get("movies", [])
     if not movies:
         return message("Now Playing: no movies found")
 
