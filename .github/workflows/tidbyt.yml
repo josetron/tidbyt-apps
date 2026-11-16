@@ -17,7 +17,7 @@ on:
       group:
         description: "Which apps to push now"
         type: choice
-        options: [market, weather, movies, stars, gameday, feed, all, ticker, tick-market, tick-quarter, tick-hourly]
+        options: [market, weather, movies, stars, lake, gameday, feed, all, ticker, tick-market, tick-quarter, tick-hourly]
         default: all
 
 permissions:
@@ -66,9 +66,9 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/tidbyt.yml/enable"
 
-  movies:   # hourly: Now Playing and Astros Stars
+  movies:   # hourly: Now Playing, Astros Stars, Lake Travis
     if: >-
-      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'stars' || github.event.inputs.group == 'all') ||
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.group == 'movies' || github.event.inputs.group == 'stars' || github.event.inputs.group == 'lake' || github.event.inputs.group == 'all') ||
       github.event.schedule == '33 * * * *' || github.event.inputs.group == 'tick-hourly'
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -84,20 +84,26 @@ jobs:
           key: movies-${{ github.run_id }}
           restore-keys: movies-
       - name: Now Playing
-        if: github.event.inputs.group != 'stars'
+        if: github.event.inputs.group != 'stars' && github.event.inputs.group != 'lake'
         env:
           TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: python tools/cloud_push.py movies
       - name: Astros Stars
-        if: always() && github.event.inputs.group != 'movies'
+        if: always() && github.event.inputs.group != 'movies' && github.event.inputs.group != 'lake'
         env:
           TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
           TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
         run: python tools/cloud_push.py stars
+      - name: Lake Travis
+        if: always() && github.event.inputs.group != 'movies' && github.event.inputs.group != 'stars'
+        env:
+          TIDBYT_API_TOKEN: ${{ secrets.TIDBYT_API_TOKEN }}
+          TIDBYT_DEVICE_ID: ${{ secrets.TIDBYT_DEVICE_ID }}
+        run: python tools/cloud_push.py lake
       - name: Save movie cache
-        if: always() && (hashFiles('.cache/now_playing.json') != '' || hashFiles('.cache/astros_stars.json') != '')
+        if: always() && (hashFiles('.cache/now_playing.json') != '' || hashFiles('.cache/astros_stars.json') != '' || hashFiles('.cache/lake_travis.json') != '')
         uses: actions/cache/save@v4
         with:
           path: .cache

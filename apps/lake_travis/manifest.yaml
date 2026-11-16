@@ -1,0 +1,8 @@
+---
+id: lake-travis
+name: Lake Travis
+summary: Lake Travis water level
+desc: Lake Travis water level. A Hill Country lake scene with the water at the real level and a sailboat on it, the level in feet and how full the lake is, then a 1-year chart against the full-pool line with the change over the week and the year.
+author: Tidbyt Dev
+fileName: lake_travis.star
+packageName: laketravis

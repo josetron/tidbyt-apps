@@ -156,6 +156,11 @@ def gameday_config():
     return {"snapshot": json.dumps(gameday_snapshot.build(), separators=(",", ":"))}, ""
 
 
+def lake_config():
+    import lake_snapshot
+    return {"snapshot": json.dumps(lake_snapshot.build(), separators=(",", ":"))}, ""
+
+
 def no_config():
     return {}, ""
 
@@ -173,6 +178,7 @@ APPS = [
     ("astrosnews", "Astros News", "astros_news", no_config, 900),
     ("astrosstars", "Astros Stars", "astros_stars", stars_config, 3600),
     ("astrosgameday", "Astros GameDay", "astros_gameday", gameday_config, 300),
+    ("laketravis", "Lake Travis", "lake_travis", lake_config, 21600),
 ]
 
 # Shared between the render thread (writes) and the window (reads)

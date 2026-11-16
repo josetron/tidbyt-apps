@@ -6,6 +6,7 @@ Renders Tidbyt apps and pushes them to the device. Run by GitHub Actions
   python tools/cloud_push.py weather            Weather Now, Weather Forecast, Pixel Museum, Pixel Aquarium, Astros News
   python tools/cloud_push.py movies             Now Playing (needs TMDB_API_KEY and Pillow)
   python tools/cloud_push.py stars              Astros Stars (needs Pillow)
+  python tools/cloud_push.py lake               Lake Travis
   python tools/cloud_push.py gameday [--follow] Astros GameDay; --follow keeps running through a game
 
 Environment:
@@ -188,6 +189,29 @@ def run_movies():
                            {"snapshot": json.dumps(page, separators=(",", ":")), "page": "0"})
 
 
+def run_lake():
+    snap_path = os.path.join(ROOT, ".cache", "lake_travis.json")
+    snap = None
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import lake_snapshot
+        snap = lake_snapshot.build()
+        os.makedirs(os.path.dirname(snap_path), exist_ok=True)
+        with open(snap_path, "w") as f:
+            json.dump(snap, f, separators=(",", ":"))
+        log("lake level %s ft on %s" % (snap["level"], snap["date"]))
+    except Exception as e:
+        log("lake fetch failed: %s" % e)
+        if os.path.exists(snap_path):
+            with open(snap_path) as f:
+                snap = json.load(f)
+            log("using the last good lake data")
+    if not snap:
+        return False
+    return render_and_push("apps/lake_travis/lake_travis.star", "laketravis",
+                           {"snapshot": json.dumps(snap, separators=(",", ":"))})
+
+
 def run_stars():
     snap_path = os.path.join(ROOT, ".cache", "astros_stars.json")
     snap = None
@@ -278,6 +302,8 @@ def main():
         ok = run_movies()
     elif group == "stars":
         ok = run_stars()
+    elif group == "lake":
+        ok = run_lake()
     elif group == "gameday":
         ok = run_gameday("--follow" in sys.argv)
     else:

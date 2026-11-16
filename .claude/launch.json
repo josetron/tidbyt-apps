@@ -138,6 +138,17 @@
         "apps/astros_gameday/preview/astros_gameday_preview.star"
       ],
       "port": 8092
+    },
+    {
+      "name": "lake_travis",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8093",
+        "apps/lake_travis/preview/lake_travis_preview.star"
+      ],
+      "port": 8093
     }
   ]
 }

@@ -1,5 +1,5 @@
 """
-Builds preview-only copies of the snapshot apps (Now Playing, Astros Stars, Astros GameDay) with their sample
+Builds preview-only copies of the snapshot apps (Now Playing, Astros Stars, Astros GameDay, Lake Travis) with their sample
 snapshot embedded, because the Pixlet emulator can't take the large `snapshot` config value.
 The output is git-ignored.
 
@@ -12,7 +12,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-for name in ("now_playing", "astros_stars", "astros_gameday"):
+for name in ("now_playing", "astros_stars", "astros_gameday", "lake_travis"):
     app = os.path.join(ROOT, "apps", name)
     s = open(os.path.join(app, name + ".star"), encoding="utf-8").read()
     snap = json.dumps(json.load(open(os.path.join(app, "fixtures", "sample_snapshot.json"), encoding="utf-8")), separators=(",", ":"))
