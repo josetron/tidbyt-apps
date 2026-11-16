@@ -1,0 +1,8 @@
+---
+id: dark-sky
+name: Dark Sky Tonight
+summary: Stargazing outlook tonight
+desc: Tonight's stargazing outlook for Dripping Springs, a Dark Sky Community. A starfield with a score out of 10, the best dark window and a dusk-to-dawn quality bar, then the moon phase and moonrise or moonset, the planets that are up, dusk and dawn, and when the Milky Way core is out.
+author: Tidbyt Dev
+fileName: dark_sky.star
+packageName: darksky

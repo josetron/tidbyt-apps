@@ -161,6 +161,14 @@ def lake_config():
     return {"snapshot": json.dumps(lake_snapshot.build(), separators=(",", ":"))}, ""
 
 
+def dark_sky_config(settings=None):
+    # the sky is computed in Python for the ZIP in the app's settings (default Dripping Springs)
+    import dark_sky_snapshot
+    zip_code = ((settings or {}).get("zip") or dark_sky_snapshot.DEFAULT_ZIP).strip()[:5]
+    snap = dark_sky_snapshot.build(zip_code=zip_code)
+    return {"snapshot": json.dumps(snap, separators=(",", ":")), "zip": zip_code}, ""
+
+
 def no_config():
     return {}, ""
 
@@ -179,6 +187,7 @@ APPS = [
     ("astrosstars", "Astros Stars", "astros_stars", stars_config, 3600),
     ("astrosgameday", "Astros GameDay", "astros_gameday", gameday_config, 300),
     ("laketravis", "Lake Travis", "lake_travis", lake_config, 21600),
+    ("darksky", "Dark Sky Tonight", "dark_sky", dark_sky_config, 3600),
 ]
 
 # Shared between the render thread (writes) and the window (reads)
@@ -596,9 +605,10 @@ def render(iid, star, build):
     # GIF, not WebP: Pillow misreads the frame durations of Pixlet's WebP files
     tmp = gif_path(iid)[:-4] + ".tmp.gif"
     try:
-        config, note = build()
         # the public feed only uses settings published on purpose from the TV; never this PC's private ones
         mine = published_settings().get(iid, {}) if FEED else load_app_settings().get(iid, {})
+        # builders that compute data for a setting (Dark Sky's ZIP) take the settings
+        config, note = build(mine) if build.__code__.co_argcount else build()
         for k, v in mine.items():
             if k != "snapshot":
                 config[k] = v

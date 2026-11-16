@@ -149,6 +149,17 @@
         "apps/lake_travis/preview/lake_travis_preview.star"
       ],
       "port": 8093
+    },
+    {
+      "name": "dark_sky",
+      "runtimeExecutable": "pixlet",
+      "runtimeArgs": [
+        "serve",
+        "--port",
+        "8094",
+        "apps/dark_sky/preview/dark_sky_preview.star"
+      ],
+      "port": 8094
     }
   ]
 }

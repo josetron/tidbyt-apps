@@ -7,6 +7,7 @@ Renders Tidbyt apps and pushes them to the device. Run by GitHub Actions
   python tools/cloud_push.py movies             Now Playing (needs TMDB_API_KEY and Pillow)
   python tools/cloud_push.py stars              Astros Stars (needs Pillow)
   python tools/cloud_push.py lake               Lake Travis
+  python tools/cloud_push.py darksky            Dark Sky Tonight (ZIP from DARK_SKY_ZIP, default 78620)
   python tools/cloud_push.py gameday [--follow] Astros GameDay; --follow keeps running through a game
 
 Environment:
@@ -212,6 +213,20 @@ def run_lake():
                            {"snapshot": json.dumps(snap, separators=(",", ":"))})
 
 
+def run_dark_sky():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import dark_sky_snapshot
+    zip_code = os.environ.get("DARK_SKY_ZIP", "").strip() or dark_sky_snapshot.DEFAULT_ZIP
+    try:
+        snap = dark_sky_snapshot.build(zip_code=zip_code)
+    except Exception as e:
+        log("dark sky fetch failed: %s" % e)  # the device keeps its last image
+        return False
+    log("dark sky: %s/10 %s" % (snap["score"], snap["label"]))  # no place in the public log
+    return render_and_push("apps/dark_sky/dark_sky.star", "darksky",
+                           {"snapshot": json.dumps(snap, separators=(",", ":")), "zip": zip_code})
+
+
 def run_stars():
     snap_path = os.path.join(ROOT, ".cache", "astros_stars.json")
     snap = None
@@ -304,6 +319,8 @@ def main():
         ok = run_stars()
     elif group == "lake":
         ok = run_lake()
+    elif group == "darksky":
+        ok = run_dark_sky()
     elif group == "gameday":
         ok = run_gameday("--follow" in sys.argv)
     else:
