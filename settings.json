@@ -3,6 +3,12 @@
   "birthdate": "2023-04-29T00:00:00-05:00",
   "name": "Canela"
  },
+ "store:flags": {
+  "bg_color": "#000",
+  "country_code": "ve",
+  "show_name": "false",
+  "text_color": "#fff"
+ },
  "store:hurricanetracker": {
   "basin": "atlantic",
   "hide_quiet": "true",
