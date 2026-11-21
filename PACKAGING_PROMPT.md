@@ -47,13 +47,25 @@ The first time the `.exe` is opened on a PC, show a small setup window that asks
 1. **Install it** or **Portable**:
    - *Install*: copies the program into an install folder and adds shortcuts. Afterwards I can delete
      the downloaded file.
-   - *Portable*: nothing is installed, no shortcuts, no registry entries, and it must look like a normal
-     portable app. It asks where to create it (default: the folder the downloaded file is in), then makes a
-     folder of its own there named `<AppName> <version>`, holding the program (the one file to
-     double-click; if the app is several files, an `App` subfolder with them) and a `Data` subfolder for its
-     settings and data. Then it opens that folder in Explorer with the program selected, so it's obvious
-     what to run. When a newer version is made next to an older portable folder, copy the older one's `Data`
-     across.
+   - *Portable*: nothing is installed and nothing goes in the registry, and it must look like a normal
+     portable app (like the ones in my `F:\Portables` folder). It asks where to create it ("Create it in",
+     with Browse; it starts as the folder the setup file is in, so I can point it at my portables folder),
+     then makes **one folder of its own** there named `<AppName> <version>`:
+
+     ```
+     <AppName> <version>        <AppName>-<version>-windows.exe   <- the one file to double-click
+        Data\                             <- its keys, settings, cache, output
+     ```
+
+     If the app is several files rather than one, put them in an `App\` subfolder instead (`App\` + `Data\`).
+     Nothing else goes in that folder, and nothing at all goes in the folder I picked or the folder the setup
+     file is in (that is often my installers folder on a network drive).
+   - When it's done, open the new folder in Explorer **with the program selected**, so it's obvious what to
+     run, and start it.
+   - Updating a portable copy: making a newer version in the same place creates `<AppName> <new version>`
+     and copies the `Data` folder from the newest older one (so keys and settings carry over), and moves the
+     desktop / start-with-Windows shortcuts to the new copy. The older folder is left for me to delete.
+   - Removing a portable copy is just deleting its folder (and any shortcut I asked for).
 2. **Install folder** (with a Browse button). Default: `%LOCALAPPDATA%\Programs\<AppName>`, which needs no
    administrator rights. In Portable mode this row becomes "Create it in".
 3. **Data folder** (with a Browse button, install mode only): where the app keeps keys, settings, cached
@@ -67,10 +79,21 @@ The first time the `.exe` is opened on a PC, show a small setup window that asks
 
 Details that must be right:
 
-- **Never drop loose files next to the program or into the folder I pick.** Remember the install choices
-  in the registry (`HKCU\Software\<AppName>`); a portable copy recognises its own `Data` folder (with a
-  small marker file inside it). If I pick a general folder (e.g. `E:\My Apps`) for data, use an
-  `<AppName>` subfolder inside it. Later starts skip the setup window and go straight to the app.
+- **Never drop loose files next to the program or into the folder I pick.** No `.json`/`.ini` beside the
+  program: remember the install choices in the registry (`HKCU\Software\<AppName>`: install folder and
+  data folder); a portable copy recognises its own `Data` folder by a small marker file *inside* it
+  (e.g. `Data\portable.ini`). If I pick a general folder (e.g. `E:\My Apps`) for data, use an `<AppName>`
+  subfolder inside it. Later starts skip the setup window and go straight to the app.
+- Offer the same two setups **without the window** too (e.g. `--setup-portable <folder> [--desktop]
+  [--autostart]` and `--setup-install <install folder> <data folder> [--no-shortcuts]`), so they can be
+  scripted and tested without clicking on my screen.
+- Packaging pitfalls already met (Python + PyInstaller one-file):
+  - When the program starts **another copy of itself** (e.g. setup starting the installed or portable copy),
+    clear PyInstaller's variables from its environment (`_PYI*`, `_MEIPASS*`) and set
+    `PYINSTALLER_RESET_ENVIRONMENT=1`; otherwise the new copy reuses the first one's temporary unpack folder,
+    which is deleted when the first one closes ("No such file ... base_library.zip").
+  - Call helper programs by their **full path** (e.g. `%SystemRoot%\System32\WindowsPowerShell1.0    powershell.exe`), not by name: `PATH` may not include them.
+  - Pass `stdin=DEVNULL` to every subprocess from a windowed (no console) build.
 - Find the **real Desktop folder** with the Windows API (SHGetFolderPath / `[Environment]::GetFolderPath`):
   OneDrive often moves it, so `%USERPROFILE%\Desktop` is not reliable.
 - Running a newer version's `.exe` acts as an **update**: same defaults, it replaces the older program
@@ -89,8 +112,8 @@ Details that must be right:
 - Add an **"Uninstall <AppName>"** entry to the Start menu that runs the same `--uninstall`.
 - Uninstall asks **"Remove <AppName> from this PC?"**, then **"Also delete its data folder?"** (No keeps
   keys and settings for a later install). Use native Windows message boxes that always come to the front.
-- It removes: the shortcuts (desktop, Start menu, startup), the uninstall entry, the settings file next to
-  the program, the data folder if I said yes, and finally the program file and its folder. A running
+- It removes: the shortcuts (desktop, Start menu, startup), the uninstall entry, the app's registry key
+  (`HKCU\Software\<AppName>`), the data folder if I said yes, and finally the program file and its folder. A running
   program can't delete itself, so start a hidden delayed command for that **after** the final "removed"
   message has been closed, so the program has really exited when it runs.
 
@@ -125,8 +148,15 @@ Details that must be right:
   at empty test folders and a `PATH` that doesn't include the developer tools (Python, git, the app's helper
   programs). Check the log or output to prove the app really works: every feature or item that should run
   does, and say which failures are outside problems (a website not answering) rather than packaging bugs.
-- Click through the setup window yourself: **Install** (check program file, desktop + Start menu
-  shortcuts, the Settings → Apps entry, the data folder with the seeded settings) and **Portable**.
+- Test **Install**: program file alone in the install folder, desktop + Start menu shortcuts, the
+  Settings → Apps entry, the registry key, the data folder (an `<AppName>` subfolder when I picked a
+  general folder) with the seeded settings, and that the installed copy starts and works.
+- Test **Portable**: exactly one `<AppName> <version>` folder holding only the program and `Data\`
+  (nothing else anywhere), the copy starts from there and works, the desktop / start-with-Windows
+  shortcuts point at it, and an update next to an older portable folder carries its `Data` over.
+- Use the window-less setup options for these checks, and click through the setup window itself only if
+  I allow screen control (ask; if I say no, don't). Point tests' shortcuts at a throwaway folder (e.g. a
+  test-only desktop override) so nothing lands on my real desktop, and confirm it didn't.
 - Run the **uninstall** both ways (keep data / delete data) and check that everything is gone.
 - Check the "already running" message.
 - Stop the copy of the app I normally run before testing (it may hold the same port or lock files), and
