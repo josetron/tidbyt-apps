@@ -1,189 +1,216 @@
-# Prompt: package my app as single-file installers (Windows .exe + Android .apk)
+# Prompt: make any app installable or portable (single-file Windows .exe and/or Android .apk)
 
-Copy everything below the line into a new session in the app's project. Fill in the `<...>` fields first.
-Delete the Android part if the app has no Android version (or the Windows part if it has no Windows one).
+How to use it: open a new session in the app's project, fill in the **Fill in** block below, then paste
+everything from the line down. Delete a platform's section if the app doesn't have that platform.
 
 ---
 
-I want this app saved as **one single file per platform** that I can copy to any device and install:
-a **Windows `.exe`** and an **Android `.apk`**. Put the finished files in: **`<output folder, e.g. Z:\My Apps\<AppName>>`**.
+## Fill in
 
-I'm not technical: explain things in plain language, test everything yourself, and tell me plainly what
-was tested and what wasn't.
+- **App name:** `<AppName>` (used for folders, shortcuts and file names; no version in it)
+- **Platforms:** `<Windows / Android / Android TV / several>`
+- **Where to put the finished files:** `<e.g. Z:\My Apps\<AppName>>`
+- **Icon picture:** `<path to the image, or "make one from the app's look">`
+- **Where my portable apps usually live:** `<e.g. F:\Portables>`
+- **Devices to install on for testing (optional):** `<e.g. Android TV at 192.168.x.x:5555>`
+- **Anything special:** `<keys the app needs, a cloud job that uses the same code, etc.>`
+
+---
+
+I want this app turned into **one single file per platform** that I can keep, copy to any device and
+either **install** or run **portable**: a Windows `.exe` and/or an Android `.apk`, as listed above.
+
+## 0. How to work with me
+
+- I'm not technical. Explain in plain language, keep it short, and tell me plainly what was tested and
+  what wasn't. Never claim something works unless you checked it.
+- Before you start, look at how the app runs today (its code, launchers, config files, keys, helper programs,
+  cloud jobs) and tell me in a few lines what you'll bundle and anything you can't include.
+- **Don't take over my screen** unless I allow it. Ask first; if I say no, test another way (see §10). Never
+  click my taskbar or other programs. Don't press buttons on my TV/phone while I may be using it.
+  If you open or close anything of mine by mistake, tell me straight away and put it back.
+- **Ask before deleting** anything of mine, including older versions of the files you made.
+- **Leave nothing behind** after testing (see §10), every time, without being asked.
+- Commit and push the source changes when done (never the built files or anything containing keys).
 
 ## 1. What the files must contain
 
-- **Everything the app needs to run on a clean device**, with nothing else to install: the language runtime
-  (e.g. Python), all libraries and packages, helper programs the app calls (command-line tools, renderers,
-  plug-ins), data files, templates, fonts, images, and anything else the app reads at run time.
-- **The same configuration I use today on this PC/device**: settings files, window size/position and other
-  layout choices, per-item settings, hidden/disabled items, chosen themes, etc. Find where each is stored
-  (config files, `%USERPROFILE%`, `%APPDATA%`, registry, Android SharedPreferences...) and include it.
-- **The keys and tokens the app uses** (API keys, access tokens), taken from where they live now.
-  - If a key only exists somewhere you can't read (e.g. a GitHub Actions secret or a cloud dashboard),
-    don't invent a workaround that leaks it: tell me, and if possible make the app fall back gracefully
-    (for example, fetch the already-made result from the cloud instead).
-  - **Never** write a key, or a file containing one, inside a git repository, especially a public one.
+- **Everything the app needs on a clean device**, so nothing else has to be installed: the runtime
+  (Python, .NET, Node/Electron, Java...), all libraries, helper programs the app calls (command-line tools,
+  renderers, plug-ins), data files, templates, fonts, images, and anything else it reads at run time.
+- **The same configuration I use today**: settings files, window size/position, per-item settings,
+  hidden/disabled items, themes, etc. Find where each lives (config files, `%USERPROFILE%`, `%APPDATA%`,
+  `%LOCALAPPDATA%`, the registry, Android SharedPreferences...) and include it.
+- **The keys and tokens the app uses**, taken from where they live now.
+  - If a key exists only where you can't read it (a GitHub Actions secret, a cloud dashboard), tell me; don't
+    leak it with a workaround. If possible make the app fall back gracefully (e.g. download the result the
+    cloud already made).
+  - **Never** write a key, or any file containing one, inside a git repository (especially a public one).
     Do the build work in a private folder outside the project (e.g. `%LOCALAPPDATA%\<AppName>Build`) and
-    write the finished file only to the output folder. Never commit the built `.exe`/`.apk`.
-  - Clean up afterwards: delete build staging folders and any temporary unpack folders that hold the keys.
-- On a new device, the bundled settings and keys are a **starting point** ("seed"): copy each into place on
-  the first run **only if it isn't there already**. Never overwrite a device's own existing settings.
+    write the finished file only to the output folder.
+- Bundled settings and keys are a **starting point ("seed")**: on a device's first run, copy each into the
+  app's data folder **only if it isn't there already**. Never overwrite a device's own settings.
 
 ## 2. Version in the file name
 
-- Add **one version number** to the code (e.g. `VERSION = "1.0.0"`) and use it everywhere: the Windows
-  file name, the Android `versionName` (plus a matching `versionCode`, e.g. 1.2.3 → 10203), the app's
-  window/setup title and its log.
-- File names: **`<AppName>-<version>-windows.exe`** and **`<AppName>-<version>-android.apk`**
-  (or `-androidtv.apk` for a TV app).
-- Raise the version every time you rebuild with a change, so old and new files can't be confused. When a
-  new version is in the output folder, ask me whether to delete the older files.
+- One version number in the code (e.g. `VERSION = "1.0.0"`), used everywhere: file names, Android
+  `versionName` + matching `versionCode` (1.2.3 → 10203), window/setup titles, folder names, the log.
+- File names: **`<AppName>-<version>-windows.exe`**, **`<AppName>-<version>-android.apk`**
+  (or `-androidtv.apk`).
+- Raise the version on **every** rebuild with a change, so old and new can't be confused. After putting a
+  new version in the output folder, ask me whether to delete the older files.
 
-## 3. Windows `.exe`: first-run setup (install or portable)
+## 3. Windows: the first-run setup window
 
-The first time the `.exe` is opened on a PC, show a small setup window that asks:
+The first time the `.exe` is opened (and it isn't already set up), show a small setup window with the app's
+icon and version in the title:
 
-1. **Install it** or **Portable**:
-   - *Install*: copies the program into an install folder and adds shortcuts. Afterwards I can delete
-     the downloaded file.
-   - *Portable*: nothing is installed and nothing goes in the registry, and it must look like a normal
-     portable app (like the ones in my `F:\Portables` folder). It asks where to create it ("Create it in",
-     with Browse; it starts as the folder the setup file is in, so I can point it at my portables folder),
-     then makes **one folder of its own** there named `<AppName> <version>`:
+1. **How do you want to use <AppName> on this PC?**
+   - **Install it** (shortcuts, listed in Settings → Apps; the downloaded file can be deleted afterwards)
+   - **Portable** (its own folder with the program and its data; nothing is installed)
+2. **Install folder** + Browse. Default `%LOCALAPPDATA%\Programs\<AppName>` (no administrator rights needed).
+   In Portable mode this row becomes **"Create it in"** + Browse, starting at the folder the setup file is
+   in, so I can point it at my portables folder.
+3. **Data folder** + Browse (install mode): where keys, settings, cache and output go. Default
+   `%LOCALAPPDATA%\<AppName>`. If I browse to a general folder (e.g. `E:\My Apps`), use an `<AppName>`
+   subfolder inside it. Picking an existing data folder keeps its settings. In Portable mode it shows the
+   `Data` folder that will be created, greyed out.
+4. A grey line under the folders saying exactly what will happen, e.g. *"Creates the folder
+   F:\Portables\<AppName> 1.0.3 with the program to double-click (<AppName>-1.0.3-windows.exe) and its
+   Data folder."*
+5. Tick boxes: **Desktop shortcut** (on) and **Start with Windows** (off) in **both** modes;
+   **Start menu shortcut** (on) in install mode only.
+6. Buttons: **Install and start** / **Create and start** (portable), and **Cancel**.
 
-     ```
-     <AppName> <version>        <AppName>-<version>-windows.exe   <- the one file to double-click
-        Data\                             <- its keys, settings, cache, output
-     ```
+Afterwards, later starts skip this window and go straight to the app.
 
-     If the app is several files rather than one, put them in an `App\` subfolder instead (`App\` + `Data\`).
-     Nothing else goes in that folder, and nothing at all goes in the folder I picked or the folder the setup
-     file is in (that is often my installers folder on a network drive).
-   - When it's done, open the new folder in Explorer **with the program selected**, so it's obvious what to
-     run, and start it.
-   - Updating a portable copy: making a newer version in the same place creates `<AppName> <new version>`
-     and copies the `Data` folder from the newest older one (so keys and settings carry over), and moves the
-     desktop / start-with-Windows shortcuts to the new copy. The older folder is left for me to delete.
-   - Removing a portable copy is just deleting its folder (and any shortcut I asked for).
-2. **Install folder** (with a Browse button). Default: `%LOCALAPPDATA%\Programs\<AppName>`, which needs no
-   administrator rights. In Portable mode this row becomes "Create it in".
-3. **Data folder** (with a Browse button, install mode only): where the app keeps keys, settings, cached
-   data and output. Default: `%LOCALAPPDATA%\<AppName>`. Picking an existing data folder keeps its settings
-   (that's how an update or reinstall keeps everything). In Portable mode it shows the `Data` folder that
-   will be created, greyed out, with a line saying exactly which folder will be made and what to run.
-4. Tick boxes: **Desktop shortcut** (on) and **Start with Windows** (off) in both modes (for a portable
-   copy they point at the portable program and move to the new copy when updating); **Start menu
-   shortcut** (on), install mode only.
-5. Button: **Install and start** (or **Create and start** in Portable mode), and **Cancel**.
+## 4. Windows: install
 
-Details that must be right:
+- Copy the program into the install folder (only the program file there).
+- Shortcuts as ticked: desktop, Start menu, Startup folder (start with Windows). Find the **real Desktop
+  folder** with the Windows API (`SHGetFolderPath` / `[Environment]::GetFolderPath('Desktop')`); OneDrive
+  often moves it.
+- Remember the choices in the **registry**, `HKCU\Software\<AppName>` (install folder, data folder).
+  **No `.json`/`.ini` next to the program.**
+- Register in **Settings → Apps → Installed apps**: `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<AppName>`
+  with DisplayName, DisplayVersion, Publisher, DisplayIcon, InstallLocation,
+  `UninstallString = "<exe>" --uninstall`, NoModify, NoRepair.
+- Add **"Uninstall <AppName>"** to the Start menu (runs `--uninstall`).
+- **Updating**: running a newer version's file and choosing Install again closes the running older copy
+  (only copies inside the install folder, never the setup itself), replaces the old program file, updates
+  the shortcuts and the Apps entry, and keeps the data folder.
 
-- **Never drop loose files next to the program or into the folder I pick.** No `.json`/`.ini` beside the
-  program: remember the install choices in the registry (`HKCU\Software\<AppName>`: install folder and
-  data folder); a portable copy recognises its own `Data` folder by a small marker file *inside* it
-  (e.g. `Data\portable.ini`). If I pick a general folder (e.g. `E:\My Apps`) for data, use an `<AppName>`
-  subfolder inside it. Later starts skip the setup window and go straight to the app.
-- Offer the same two setups **without the window** too (e.g. `--setup-portable <folder> [--desktop]
-  [--autostart]` and `--setup-install <install folder> <data folder> [--no-shortcuts]`), so they can be
-  scripted and tested without clicking on my screen.
-- Packaging pitfalls already met (Python + PyInstaller one-file):
-  - When the program starts **another copy of itself** (e.g. setup starting the installed or portable copy),
-    clear PyInstaller's variables from its environment (`_PYI*`, `_MEIPASS*`) and set
-    `PYINSTALLER_RESET_ENVIRONMENT=1`; otherwise the new copy reuses the first one's temporary unpack folder,
-    which is deleted when the first one closes ("No such file ... base_library.zip").
-  - Call helper programs by their **full path** (e.g. `%SystemRoot%\System32\WindowsPowerShell1.0    powershell.exe`), not by name: `PATH` may not include them.
-  - Pass `stdin=DEVNULL` to every subprocess from a windowed (no console) build.
-- Find the **real Desktop folder** with the Windows API (SHGetFolderPath / `[Environment]::GetFolderPath`):
-  OneDrive often moves it, so `%USERPROFILE%\Desktop` is not reliable.
-- Running a newer version's `.exe` acts as an **update**: same defaults, it replaces the older program
-  file in the install folder, updates the shortcuts and keeps the data folder. Close a running older copy
-  first (only copies in the install folder, never the setup process itself).
-- If the app is **already running**, a second start must show a message saying so ("look in the
-  notification area"), not silently do nothing.
-- If the app keeps a window position, make sure a position saved on a bigger or second monitor falls back
-  to a visible spot on a smaller screen.
+## 5. Windows: portable
 
-## 4. Windows uninstall
+Must look like a normal portable app:
 
-- Register the installed copy under **Windows Settings → Apps → Installed apps** (per-user registry key
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<AppName>` with DisplayName, DisplayVersion,
-  Publisher, DisplayIcon, InstallLocation, `UninstallString = "<exe>" --uninstall`, NoModify, NoRepair).
-- Add an **"Uninstall <AppName>"** entry to the Start menu that runs the same `--uninstall`.
-- Uninstall asks **"Remove <AppName> from this PC?"**, then **"Also delete its data folder?"** (No keeps
-  keys and settings for a later install). Use native Windows message boxes that always come to the front.
-- It removes: the shortcuts (desktop, Start menu, startup), the uninstall entry, the app's registry key
-  (`HKCU\Software\<AppName>`), the data folder if I said yes, and finally the program file and its folder. A running
-  program can't delete itself, so start a hidden delayed command for that **after** the final "removed"
-  message has been closed, so the program has really exited when it runs.
+```
+<the folder I chose>\
+   <AppName> <version>\
+      <AppName>-<version>-windows.exe    <- the one file to double-click
+      Data\                              <- keys, settings, cache, output (+ a small marker file)
+```
 
-## 5. App icon
+- If the app is several files rather than one, use `App\` (the program files) + `Data\` instead.
+- **Nothing else** goes in that folder, and **nothing at all** goes in the folder I chose or the folder the
+  setup file came from (often my installers folder on a network drive).
+- The portable copy recognises itself by a small marker file **inside** `Data\` (e.g. `Data\portable.ini`);
+  no registry entries.
+- Shortcuts only if ticked (desktop, start with Windows), pointing at the program inside the folder.
+- When done: start it, and open the new folder in Explorer **with the program selected**.
+- **Updating**: making a newer version in the same place creates `<AppName> <new version>`, copies `Data\`
+  from the newest older one (keys and settings carry over), and moves the ticked shortcuts to the new copy.
+  The older folder is left for me to delete.
+- **Removing**: just delete the folder (and any shortcut I asked for).
 
-- Use **`<path to my icon image>`** for: the `.exe` file, its windows (title bar, taskbar, Alt+Tab), the
-  tray/notification icon if there is one, and the Android launcher icon (and the TV banner, 320×180, for
-  an Android TV app).
-- Make a multi-size Windows `.ico` (16, 24, 32, 48, 64, 128, 256). If the picture has small text, use a
-  simplified crop (without the text) for the 16–32 px sizes so they stay readable.
-- Show me a preview sheet of all icon sizes before finishing.
+## 6. Windows: uninstall (installed copies)
 
-## 6. Android `.apk`
+- Asks **"Remove <AppName> from this PC?"**, then **"Also delete its data folder?"** (No keeps keys and
+  settings for a later install). Use native Windows message boxes that always come to the front.
+- Removes: all shortcuts (desktop, Start menu, Startup, the uninstall entry), the Settings → Apps entry, the
+  app's registry key, the data folder if I said yes, and finally the program and its folder.
+- A running program can't delete itself: after the final "removed" message has been closed, start a
+  hidden delayed command (detached, outside the program's job) that deletes the file and folder.
 
-- One signed `.apk` that installs by itself (sideloading) on phones/TVs, with a sensible `minSdk` so
-  it also installs on older devices.
-- Use the **same signing key** as the copy already installed on my device, so the new one installs as an
-  update and keeps its data. Tell me where that key lives and that I need it to make future updates.
-- **Bake my current device settings in as first-run defaults.** Read the real current values from my
-  device (for example, temporarily install a debuggable build with the same key and read the app's
-  SharedPreferences with `adb shell run-as`, then reinstall the normal build). Apply them on first start
-  only when a setting is missing, so an existing device is never changed. Leave out device-specific
-  values (network addresses, the device's previous system settings).
-- If a feature needs a permission an app can't give itself (e.g. `WRITE_SECURE_SETTINGS` granted with
-  `adb shell pm grant`), say so plainly: the rest of the app must work without it.
-- Install the new version on my existing device and confirm with `dumpsys package` that the version and
-  permissions are right.
+## 7. Windows: behaviour of the app itself
 
-## 7. Testing (do it yourself, before telling me it's done)
+- If the app is **already running**, a second start shows a message ("already running; look in the
+  notification area"), never silently nothing.
+- A window position saved on a bigger or second monitor falls back to a visible spot on smaller screens.
+- Offer the setups **without the window** too, for scripting and testing:
+  `--setup-portable <folder> [--desktop] [--autostart]`,
+  `--setup-install <install folder> <data folder> [--no-shortcuts]`, `--uninstall`.
+- Pitfalls already met (Python + PyInstaller one-file; check the equivalents for other tools):
+  - When the program starts **another copy of itself**, remove PyInstaller's variables (`_PYI*`,
+    `_MEIPASS*`) from its environment and set `PYINSTALLER_RESET_ENVIRONMENT=1`, or the new copy reuses the
+    first one's temporary unpack folder and crashes when it's deleted ("No such file ... base_library.zip").
+  - A file added to the bundle can end up as a folder of the same name; check bundled helper programs are
+    really where the code looks for them.
+  - Call system tools by **full path** (e.g. `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`).
+  - Windowed builds: `stdin=DEVNULL` on every subprocess; write a log file, since there's no console.
+  - Paths: read bundled files from the unpack folder; write everything to the data folder, never next to
+    the program or into the temporary unpack folder.
 
-- **Pretend to be a brand-new PC**: run the `.exe` with `USERPROFILE`, `LOCALAPPDATA` and `APPDATA` pointed
-  at empty test folders and a `PATH` that doesn't include the developer tools (Python, git, the app's helper
-  programs). Check the log or output to prove the app really works: every feature or item that should run
-  does, and say which failures are outside problems (a website not answering) rather than packaging bugs.
-- Test **Install**: program file alone in the install folder, desktop + Start menu shortcuts, the
-  Settings → Apps entry, the registry key, the data folder (an `<AppName>` subfolder when I picked a
-  general folder) with the seeded settings, and that the installed copy starts and works.
-- Test **Portable**: exactly one `<AppName> <version>` folder holding only the program and `Data\`
-  (nothing else anywhere), the copy starts from there and works, the desktop / start-with-Windows
-  shortcuts point at it, and an update next to an older portable folder carries its `Data` over.
-- Use the window-less setup options for these checks, and click through the setup window itself only if
-  I allow screen control (ask; if I say no, don't). Point tests' shortcuts at a throwaway folder (e.g. a
-  test-only desktop override) so nothing lands on my real desktop, and confirm it didn't.
-- Run the **uninstall** both ways (keep data / delete data) and check that everything is gone.
-- Check the "already running" message.
-- Stop the copy of the app I normally run before testing (it may hold the same port or lock files), and
-  **start it again afterwards**.
-- Don't press buttons on my TV/phone while I may be using it; ask first or use screenshots only.
-- Don't click on my taskbar or on other programs while testing; if you open or close something of mine by
-  mistake, tell me straight away.
-- **Leave nothing behind.** Close everything you opened (test copies, their windows and dialogs, anything
-  started by a mis-click) and delete every leftover: test folders, temporary unpack folders (`%TEMP%\_MEI*`),
-  build work folders and files that embed keys (PyInstaller `build\*.pkg`, `.spec`), test registry entries,
-  test shortcuts, stale lock files. Restart anything of mine you stopped. Then list the places you checked,
-  and tell me what remains on purpose and why. Do this every time, without being asked.
+## 8. Icon
 
-## 8. Keep the project's normal way of running
+- Use the icon picture for the `.exe` file, every window (title bar, taskbar, Alt+Tab), the setup window,
+  the tray icon if any, the Android launcher icon and, for Android TV, the 320×180 banner.
+- Windows `.ico` with 16, 24, 32, 48, 64, 128 and 256 px. If the picture has small text, use a simplified
+  crop without it for 16–32 px so it stays readable.
+- Show me a preview of all sizes before finishing.
 
-- The source code must still run exactly as before when not packaged (e.g. a script started by a launcher,
-  a cloud job that uses the same code). Change paths only when running as the packaged file.
-- Add a build script (e.g. `tools/build_exe.py`, and a `--copy-to <folder>` option for the Android build)
-  so a future rebuild is one command, and describe it in the project's notes/README.
-- Commit and push the source changes (never the built files or anything with keys).
+## 9. Android `.apk`
 
-## 9. When you finish, tell me in plain language
+- One signed `.apk` that installs by itself (sideloading), with a sensible `minSdk`.
+- Sign with the **same key** as the copy already on my device, so it installs as an update and keeps its
+  data. Tell me where that key lives (I need it for future updates).
+- **My current device settings become the first-run defaults**: read the real values from my device (e.g.
+  install a debuggable build with the same key, read the app's SharedPreferences with `adb shell run-as`,
+  then reinstall the normal build) and apply them on first start only where a setting is missing. Leave out
+  device-specific values (network addresses, the device's own previous system settings).
+- Permissions an app can't give itself (e.g. `WRITE_SECURE_SETTINGS` via `adb shell pm grant`): say so
+  plainly; the rest must work without them.
+- Android TV: everything usable with the remote (D-pad), plus the banner.
+- Install the new version on my device without opening or switching the app on screen, re-grant any
+  PC-granted permissions, and confirm version and permissions with `dumpsys package`.
 
-- The file names and where they are.
+## 10. Testing (yourself, before telling me it's done)
+
+- **Pretend to be a brand-new PC**: run with `USERPROFILE`, `LOCALAPPDATA` and `APPDATA` pointed at empty
+  test folders and a `PATH` without developer tools. Prove from the log/output that the app really works;
+  say which failures are outside problems (a website not answering) rather than packaging bugs.
+- **Install**: only the program in the install folder; shortcuts; Settings → Apps entry; registry key; data
+  folder (an `<AppName>` subfolder when a general folder was picked) with the seeded settings; the installed
+  copy starts and works; the "already running" message.
+- **Portable**: exactly one `<AppName> <version>` folder holding only the program and `Data\` (nothing
+  anywhere else); it starts from there and works; shortcuts point at it; an update next to an older
+  portable folder carries `Data\` over.
+- **Uninstall** both ways (keep data / delete data): everything listed in §6 is gone.
+- Use the window-less setup options for these checks. Click through the setup window itself only if I allow
+  screen control. Point test shortcuts at a throwaway folder (a test-only desktop override) so nothing lands
+  on my real desktop, and confirm it didn't.
+- Stop the copy of the app I normally run first (it may hold the same port or files), and **start it again
+  afterwards** (but don't restart something I closed myself without asking).
+- **Leave nothing behind**: close everything you opened (test copies, dialogs, Explorer windows) and delete
+  test folders, temporary unpack folders (`%TEMP%\_MEI*` etc.), build work files that embed keys
+  (PyInstaller `build\*.pkg`, `.spec`, staging folders), test registry entries, test shortcuts, temporary
+  icons, stray hidden files in the output folder, stale lock files. Then list where you checked, and what
+  remains on purpose and why.
+
+## 11. Keep the project working as before
+
+- The unpackaged app (launcher scripts, cloud jobs that use the same code) must run exactly as before;
+  change behaviour only when running as the packaged file.
+- Add a one-command build (e.g. `tools/build_exe.py <output folder>`; `--copy-to <folder>` for the Android
+  build) and describe it in the project's notes/README.
+
+## 12. When you finish, tell me in plain language
+
+- The file names and where they are, and that older versions are waiting for my OK to delete.
 - What's inside (runtime, helper programs, data, which settings and which keys).
-- How the first-run setup, update and uninstall work.
-- What you tested and what you couldn't (for example, a brand-new Android device).
-- Anything I must know: the file contains my keys (keep the folder private); keys that couldn't be included;
-  data frozen at build time that needs a rebuild to change; one-time steps per device; Windows SmartScreen
-  may warn "unknown publisher" (More info → Run anyway); anything that only works on this PC.
+- How install, portable, update and uninstall work, and what to click.
+- What you tested and what you couldn't (e.g. the setup window if I declined screen control, a brand-new
+  Android device).
+- What I must know: the file contains my keys (keep the folder private); keys that couldn't be included;
+  data frozen at build time that needs a rebuild; one-time steps per device; Windows may warn "unknown
+  publisher" (More info → Run anyway); anything that only works on this PC.
