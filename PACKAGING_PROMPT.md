@@ -125,7 +125,11 @@ Details that must be right:
 - Don't press buttons on my TV/phone while I may be using it; ask first or use screenshots only.
 - Don't click on my taskbar or on other programs while testing; if you open or close something of mine by
   mistake, tell me straight away.
-- Delete every test folder, temporary unpack folder and test registry entry when done.
+- **Leave nothing behind.** Close everything you opened (test copies, their windows and dialogs, anything
+  started by a mis-click) and delete every leftover: test folders, temporary unpack folders (`%TEMP%\_MEI*`),
+  build work folders and files that embed keys (PyInstaller `build\*.pkg`, `.spec`), test registry entries,
+  test shortcuts, stale lock files. Restart anything of mine you stopped. Then list the places you checked,
+  and tell me what remains on purpose and why. Do this every time, without being asked.
 
 ## 8. Keep the project's normal way of running
 
