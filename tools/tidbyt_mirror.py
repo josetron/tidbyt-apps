@@ -69,7 +69,7 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.0"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.1"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
 EXE_CONFIG = "TidbytMirror.json"  # beside the .exe once set up: {"data": folder, "portable": bool}
 if FROZEN:
@@ -724,10 +724,28 @@ def worker():
 # Window
 # ---------------------------------------------------------------------------
 
+ICON_PNG = os.path.join(ROOT, "assets", "tidbyt_icon.png")  # the app icon (1024 px: the device over the logo)
+
+
+def write_icon(path):
+    """Writes ICON_PNG as a Windows .ico: the whole picture at 48 px and up; at 16-32 px only the
+    device (the logo text would be an unreadable smudge that small). False if there is no picture."""
+    if Image is None or not os.path.exists(ICON_PNG):
+        return False
+    full = Image.open(ICON_PNG).convert("RGBA")
+    device = full.crop((0, 106, 1024, 615))  # the clock-radio shape, 2:1
+    square = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    square.paste(device, (0, (1024 - device.height) // 2))
+    sizes = [16, 24, 32, 48, 64, 128, 256]
+    images = [(square if s <= 32 else full).resize((s, s), Image.LANCZOS) for s in sizes]
+    images[-1].save(path, format="ICO", sizes=[(s, s) for s in sizes], append_images=images[:-1])
+    return True
+
+
 def tray_icon_file():
-    """A small LED-matrix icon for the notification area, made once with Pillow."""
-    path = os.path.join(OUT, "tray.ico")
-    if not os.path.exists(path):
+    """The icon for the notification area (and the window), made once with Pillow."""
+    path = os.path.join(OUT, "tidbyt.ico")
+    if not os.path.exists(path) and not write_icon(path):  # no picture: draw a small LED-matrix icon
         size, dots = 64, ["#ff7a1a", "#f4f4f4", "#33dd66", "#4da6ff"]
         im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         d = ImageDraw.Draw(im)
@@ -962,6 +980,10 @@ class Mirror:
 
         root = self.root = tk.Tk()
         root.title("Tidbyt Mirror")
+        try:  # taskbar, Alt+Tab and the Apps / Settings windows
+            root.iconbitmap(default=tray_icon_file())
+        except tk.TclError:
+            pass
         root.overrideredirect(True)  # frameless
         root.configure(bg="#000000")
         try:
@@ -1605,6 +1627,13 @@ def setup_window():
     here = os.path.dirname(exe)
     root = tk.Tk()
     root.title("Tidbyt Mirror %s setup" % VERSION)
+    try:
+        os.makedirs(os.path.dirname(LOCAL_DATA), exist_ok=True)
+        ico = os.path.join(os.environ.get("TEMP") or here, "tidbyt_mirror_setup.ico")
+        if write_icon(ico):
+            root.iconbitmap(default=ico)
+    except (OSError, tk.TclError):
+        pass
     root.resizable(False, False)
     mode = tk.StringVar(value="install")
     folder = tk.StringVar(value=PROGRAMS)

@@ -62,11 +62,16 @@ def main():
             print("note: %s not found, left out" % src)
     shutil.copy(PIXLET, os.path.join(stage, "pixlet.exe"))
 
+    shutil.copytree(os.path.join(ROOT, "assets"), os.path.join(stage, "assets"))
     tools = os.path.join(ROOT, "tools")
-    data = ["apps", "community", "seed", "pixlet.exe"]
+    sys.path.insert(0, tools)
+    import tidbyt_mirror  # the .exe's own icon, made the same way as the window's
+    icon = os.path.join(WORK, "tidbyt.ico")
+    tidbyt_mirror.write_icon(icon)
+    data = ["apps", "community", "seed", "pixlet.exe", "assets"]
     args = [py, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--name", name,
             "--distpath", out_dir, "--workpath", os.path.join(WORK, "build"), "--specpath", WORK,
-            "--paths", tools, "--collect-data", "tzdata"]
+            "--paths", tools, "--collect-data", "tzdata", "--icon", icon]
     for mod in ("movies_snapshot", "stars_snapshot", "gameday_snapshot", "lake_snapshot", "dark_sky_snapshot"):
         args += ["--hidden-import", mod]
     for d in data:  # a folder keeps its name inside the .exe; a single file goes to the top level
