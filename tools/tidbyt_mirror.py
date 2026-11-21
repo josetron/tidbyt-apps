@@ -69,7 +69,7 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.4"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.5"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
 APP_KEY = r"Software\TidbytMirror"  # installed copy: {"InstallFolder", "DataFolder"} (HKEY_CURRENT_USER)
 PORTABLE_MARK = "portable.ini"     # inside the Data folder next to a portable copy
@@ -1626,6 +1626,9 @@ def shortcut_places():
     """(name, folder) of every shortcut setup can make: desktop, Start menu, Startup (start with Windows)."""
     start = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs")
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    if os.environ.get("TIDBYT_MIRROR_TEST_DESKTOP"):  # tests: never touch the real desktop
+        return [("desktop", os.environ["TIDBYT_MIRROR_TEST_DESKTOP"]), ("startmenu", start),
+                ("autostart", os.path.join(start, "Startup"))]
     try:  # the real desktop folder (OneDrive can move it)
         import ctypes
         buf = ctypes.create_unicode_buffer(260)
@@ -1706,11 +1709,12 @@ def setup_install(exe, dest, data_dir, desktop=True, startmenu=True, autostart=F
     return target
 
 
-def setup_portable(exe, parent, autostart=False):
+def setup_portable(exe, parent, autostart=False, desktop=False):
     """Portable: makes <parent>/Tidbyt Mirror <version>/ with the program and a Data folder (marked by
     PORTABLE_MARK). An update next to an older portable folder copies that folder's Data across.
-    autostart: a shortcut in the Startup folder starts this copy with Windows (pointed at the new copy
-    on an update; left as it is when not asked for). Returns the program in the new folder."""
+    autostart / desktop: a shortcut in the Startup folder (start with Windows) / on the desktop, pointed at
+    the new copy (so an update moves them along); left as they are when not asked for.
+    Returns the program in the new folder."""
     import shutil
     parent = os.path.normpath(parent)
     name = "Tidbyt Mirror %s" % VERSION
@@ -1729,10 +1733,11 @@ def setup_portable(exe, parent, autostart=False):
     target = os.path.join(app, os.path.basename(exe))
     if os.path.normcase(target) != os.path.normcase(exe):
         shutil.copyfile(exe, target)
-    if autostart:
-        startup = shortcut_places()[2][1]
-        os.makedirs(startup, exist_ok=True)
-        make_shortcut(os.path.join(startup, "Tidbyt Mirror.lnk"), target)
+    places = dict(shortcut_places())
+    for want, key in ((desktop, "desktop"), (autostart, "autostart")):
+        if want:
+            os.makedirs(places[key], exist_ok=True)
+            make_shortcut(os.path.join(places[key], "Tidbyt Mirror.lnk"), target)
     return target
 
 
@@ -1821,12 +1826,13 @@ def setup_window():
     c3 = ttk.Checkbutton(root, text="Start with Windows", variable=autostart)
     for i, c in enumerate((c1, c2, c3)):
         c.grid(row=6 + i, column=1, **pad)
-    install_only = (e2, b2, c1, c2)  # "Start with Windows" works for a portable copy too
+    install_only = (e2, b2, c2)  # desktop shortcut and "Start with Windows" work for a portable copy too
 
     def go():
         try:
             if mode.get() == "portable":
-                result["exe"] = result["show"] = setup_portable(exe, folder.get(), autostart.get())
+                result["exe"] = result["show"] = setup_portable(exe, folder.get(), autostart.get(),
+                                                                   desktop.get())
             else:
                 result["exe"] = setup_install(exe, folder.get(), data.get(), desktop.get(), startmenu.get(),
                                               autostart.get())
@@ -1911,11 +1917,11 @@ def main():
             uninstall()
         return
     if FROZEN and ("--setup-portable" in sys.argv or "--setup-install" in sys.argv):
-        # without the setup window:  --setup-portable <folder> [--autostart]
+        # without the setup window:  --setup-portable <folder> [--autostart] [--desktop]
         #                            --setup-install <install folder> <data folder> [--no-shortcuts]
         if "--setup-portable" in sys.argv:
             setup_portable(sys.executable, sys.argv[sys.argv.index("--setup-portable") + 1],
-                           "--autostart" in sys.argv)
+                           "--autostart" in sys.argv, "--desktop" in sys.argv)
         else:
             n = sys.argv.index("--setup-install")
             shortcuts = "--no-shortcuts" not in sys.argv

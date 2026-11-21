@@ -60,9 +60,9 @@ The first time the `.exe` is opened on a PC, show a small setup window that asks
    data and output. Default: `%LOCALAPPDATA%\<AppName>`. Picking an existing data folder keeps its settings
    (that's how an update or reinstall keeps everything). In Portable mode it shows the `Data` folder that
    will be created, greyed out, with a line saying exactly which folder will be made and what to run.
-4. Tick boxes: **Desktop shortcut** (on) and **Start menu shortcut** (on), install mode only;
-   **Start with Windows** (off), available in both modes (for a portable copy it is a shortcut in the
-   Startup folder pointing at the portable program, moved to the new copy when updating).
+4. Tick boxes: **Desktop shortcut** (on) and **Start with Windows** (off) in both modes (for a portable
+   copy they point at the portable program and move to the new copy when updating); **Start menu
+   shortcut** (on), install mode only.
 5. Button: **Install and start** (or **Create and start** in Portable mode), and **Cancel**.
 
 Details that must be right:
