@@ -69,7 +69,7 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.1"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.2"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
 EXE_CONFIG = "TidbytMirror.json"  # beside the .exe once set up: {"data": folder, "portable": bool}
 if FROZEN:
@@ -126,6 +126,16 @@ def read_secret(name):
             return f.read().strip()
     except OSError:
         return os.environ.get(SECRET_ENV.get(name, ""), "").strip()
+
+
+def own_env():
+    """Environment for starting this program again as a separate process. The .exe passes its own
+    unpack-folder settings to child processes; a second copy of the .exe would then reuse the folder,
+    which is deleted when the first copy exits ("No such file ... base_library.zip")."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("_PYI", "_MEIPASS"))}
+    if FROZEN:
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
 
 
 def log(msg):
@@ -555,7 +565,7 @@ def tv_save(key, raw):
     ok = publish_settings(key, values)
     if ok:  # refresh the TV's picture in the background (a separate process: it renders in feed mode)
         me = [sys.executable] if FROZEN else [sys.executable, os.path.abspath(__file__)]
-        subprocess.Popen(me + ["--feed-one", key], stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        subprocess.Popen(me + ["--feed-one", key], stdin=subprocess.DEVNULL, env=own_env(), creationflags=NO_WINDOW)
     return ok
 
 
@@ -1802,7 +1812,7 @@ def main():
             sys.exit("Tidbyt Mirror is not set up yet: start it without options first")
         exe = setup_window()
         if exe:  # start the set-up copy, which now finds its data folder
-            subprocess.Popen([exe], cwd=os.path.dirname(exe), stdin=subprocess.DEVNULL)
+            subprocess.Popen([exe], cwd=os.path.dirname(exe), stdin=subprocess.DEVNULL, env=own_env())
         return
     if FROZEN:
         seed_from_exe()
