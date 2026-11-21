@@ -1576,7 +1576,15 @@ UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\TidbytMirr
 def shortcut_places():
     """(name, folder) of every shortcut setup can make: desktop, Start menu, Startup (start with Windows)."""
     start = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs")
-    return [("desktop", os.path.join(os.path.expanduser("~"), "Desktop")), ("startmenu", start),
+    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    try:  # the real desktop folder (OneDrive can move it)
+        import ctypes
+        buf = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 0x10, None, 0, buf) == 0 and buf.value:
+            desktop = buf.value
+    except (AttributeError, OSError):
+        pass
+    return [("desktop", desktop), ("startmenu", start),
             ("autostart", os.path.join(start, "Startup"))]
 
 
@@ -1790,6 +1798,11 @@ def main():
         guard.bind(("127.0.0.1", LOCK_PORT))
     except OSError:
         log("Tidbyt Mirror is already running")
+        if FROZEN:  # no console: say so instead of quietly doing nothing
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, "Tidbyt Mirror is already running on this PC (look in the "
+                                             "notification area if you can't see it). Close it first to start "
+                                             "this copy.", "Tidbyt Mirror", 0x40 | 0x40000 | 0x10000)
         return
     log("Tidbyt Mirror %s" % VERSION)
     threading.Thread(target=worker, daemon=True).start()
