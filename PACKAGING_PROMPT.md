@@ -47,21 +47,29 @@ The first time the `.exe` is opened on a PC, show a small setup window that asks
 1. **Install it** or **Portable**:
    - *Install*: copies the program into an install folder and adds shortcuts. Afterwards I can delete
      the downloaded file.
-   - *Portable*: runs from where the file is; nothing is installed, no shortcuts, no registry entries.
+   - *Portable*: nothing is installed, no shortcuts, no registry entries, and it must look like a normal
+     portable app. It asks where to create it (default: the folder the downloaded file is in), then makes a
+     folder of its own there named `<AppName> <version>`, holding the program (the one file to
+     double-click; if the app is several files, an `App` subfolder with them) and a `Data` subfolder for its
+     settings and data. Then it opens that folder in Explorer with the program selected, so it's obvious
+     what to run. When a newer version is made next to an older portable folder, copy the older one's `Data`
+     across.
 2. **Install folder** (with a Browse button). Default: `%LOCALAPPDATA%\Programs\<AppName>`, which needs no
-   administrator rights. Greyed out in Portable mode.
-3. **Data folder** (with a Browse button): where the app keeps keys, settings, cached data and output.
-   Default: `%LOCALAPPDATA%\<AppName>` when installed, or a `<AppName> data` folder next to the file when
-   portable. Picking an existing data folder keeps its settings (that's how an update or reinstall keeps
-   everything).
+   administrator rights. In Portable mode this row becomes "Create it in".
+3. **Data folder** (with a Browse button, install mode only): where the app keeps keys, settings, cached
+   data and output. Default: `%LOCALAPPDATA%\<AppName>`. Picking an existing data folder keeps its settings
+   (that's how an update or reinstall keeps everything). In Portable mode it shows the `Data` folder that
+   will be created, greyed out, with a line saying exactly which folder will be made and what to run.
 4. Tick boxes (install mode only): **Desktop shortcut** (on), **Start menu shortcut** (on),
    **Start with Windows** (off).
-5. Button: **Install and start** (or **Start** in Portable mode), and **Cancel**.
+5. Button: **Install and start** (or **Create and start** in Portable mode), and **Cancel**.
 
 Details that must be right:
 
-- Save the choices in a small file next to the program (e.g. `<AppName>.json` with the data folder and
-  portable flag), so later starts skip the setup window and go straight to the app.
+- **Never drop loose files next to the program or into the folder I pick.** Remember the install choices
+  in the registry (`HKCU\Software\<AppName>`); a portable copy recognises its own `Data` folder (with a
+  small marker file inside it). If I pick a general folder (e.g. `E:\My Apps`) for data, use an
+  `<AppName>` subfolder inside it. Later starts skip the setup window and go straight to the app.
 - Find the **real Desktop folder** with the Windows API (SHGetFolderPath / `[Environment]::GetFolderPath`):
   OneDrive often moves it, so `%USERPROFILE%\Desktop` is not reliable.
 - Running a newer version's `.exe` acts as an **update**: same defaults, it replaces the older program

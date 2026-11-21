@@ -69,18 +69,35 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.2"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.3"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
-EXE_CONFIG = "TidbytMirror.json"  # beside the .exe once set up: {"data": folder, "portable": bool}
+APP_KEY = r"Software\TidbytMirror"  # installed copy: {"InstallFolder", "DataFolder"} (HKEY_CURRENT_USER)
+PORTABLE_MARK = "portable.ini"     # inside the Data folder next to a portable copy
+
+
+def exe_data_folder():
+    """Where the .exe keeps its data, or None when it is not set up yet (main() then shows setup).
+    Portable: a "Data" folder (with PORTABLE_MARK) next to the program. Installed: the registry."""
+    here = os.path.dirname(sys.executable)
+    data = os.path.join(here, "Data")
+    if os.path.exists(os.path.join(data, PORTABLE_MARK)):
+        return data
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, APP_KEY) as k:
+            installed = winreg.QueryValueEx(k, "InstallFolder")[0]
+            if os.path.normcase(os.path.normpath(installed)) == os.path.normcase(here):
+                return winreg.QueryValueEx(k, "DataFolder")[0]
+    except OSError:
+        pass
+    return None
+
+
 if FROZEN:
     # the .exe unpacks its apps, store apps and pixlet to a temporary folder; everything it keeps
     # (token, app settings, pictures, window position) goes to the data folder chosen at setup
     ROOT = sys._MEIPASS
-    try:
-        with open(os.path.join(os.path.dirname(sys.executable), EXE_CONFIG), encoding="utf-8") as _f:
-            DATA = json.load(_f)["data"]
-    except (OSError, ValueError, KeyError):
-        DATA = None  # not set up yet: main() shows the setup window
+    DATA = exe_data_folder()
     HOME = DATA or ""
 else:
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1626,106 +1643,187 @@ def make_shortcut(link, target, arguments=""):
           "$s.Arguments = '%s'; $s.WorkingDirectory = '%s'; $s.Save()") % (
         link.replace("'", "''"), target.replace("'", "''"), arguments.replace("'", "''"),
         os.path.dirname(target).replace("'", "''"))
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps], stdin=subprocess.DEVNULL,
+    subprocess.run([POWERSHELL, "-NoProfile", "-Command", ps], stdin=subprocess.DEVNULL,
                    capture_output=True, creationflags=NO_WINDOW)
 
 
+APP_FOLDER = "Tidbyt Mirror"  # the folder setup makes for the program or its data
+
+
+def app_subfolder(path):
+    """The chosen folder plus an app folder of its own, unless it already is one: the app never
+    spreads its files straight into a general folder such as "My Apps"."""
+    path = os.path.normpath(path)
+    name = os.path.basename(path).lower().replace(" ", "")
+    return path if name.startswith("tidbytmirror") else os.path.join(path, APP_FOLDER)
+
+
+POWERSHELL = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0",
+                          "powershell.exe")  # full path: PATH may not include it
+
+
+def stop_copies_in(folder):
+    """Closes running copies of the program inside folder (never this one or its launcher)."""
+    ps = ("Get-Process | Where-Object { $_.Path -like '%s\\TidbytMirror-*' -and $_.Id -ne %d -and $_.Id -ne %d } "
+          "| Stop-Process -Force") % (folder.replace("'", "''"), os.getpid(), os.getppid())
+    subprocess.run([POWERSHELL, "-NoProfile", "-Command", ps], capture_output=True,
+                   stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+
+
+def setup_install(exe, dest, data_dir, desktop=True, startmenu=True, autostart=False):
+    """Install: copies the program to dest, makes the shortcuts, the Settings > Apps entry and the
+    Start menu uninstall entry, and remembers both folders in the registry. Returns the copy."""
+    import shutil
+    import winreg
+    dest, data_dir = os.path.normpath(dest), os.path.normpath(data_dir)
+    os.makedirs(dest, exist_ok=True)
+    os.makedirs(data_dir, exist_ok=True)
+    stop_copies_in(dest)  # an older version still running would keep this one from starting
+    for old in os.listdir(dest):
+        if old.startswith("TidbytMirror-") and old.endswith(".exe") and old != os.path.basename(exe):
+            try:
+                os.remove(os.path.join(dest, old))
+            except OSError:
+                pass
+    target = os.path.join(dest, os.path.basename(exe))
+    if os.path.normcase(target) != os.path.normcase(exe):
+        shutil.copyfile(exe, target)
+    wanted = {"desktop": desktop, "startmenu": startmenu, "autostart": autostart}
+    for key, place in shortcut_places():
+        link = os.path.join(place, "Tidbyt Mirror.lnk")
+        if wanted[key]:
+            os.makedirs(place, exist_ok=True)
+            make_shortcut(link, target)
+        elif os.path.exists(link):
+            os.remove(link)
+    start = shortcut_places()[1][1]
+    os.makedirs(start, exist_ok=True)
+    make_shortcut(os.path.join(start, "Uninstall Tidbyt Mirror.lnk"), target, "--uninstall")
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, APP_KEY) as k:
+        winreg.SetValueEx(k, "InstallFolder", 0, winreg.REG_SZ, dest)
+        winreg.SetValueEx(k, "DataFolder", 0, winreg.REG_SZ, data_dir)
+    register_uninstall(target)
+    return target
+
+
+def setup_portable(exe, parent):
+    """Portable: makes <parent>/Tidbyt Mirror <version>/ with the program and a Data folder (marked by
+    PORTABLE_MARK). An update next to an older portable folder copies that folder's Data across.
+    Returns the program in the new folder."""
+    import shutil
+    parent = os.path.normpath(parent)
+    name = "Tidbyt Mirror %s" % VERSION
+    app = os.path.join(parent, name)
+    data_dir = os.path.join(app, "Data")
+    older = sorted((d for d in (os.listdir(parent) if os.path.isdir(parent) else [])
+                    if d.startswith("Tidbyt Mirror ") and d != name
+                    and os.path.exists(os.path.join(parent, d, "Data", PORTABLE_MARK))), reverse=True)
+    os.makedirs(app, exist_ok=True)
+    if not os.path.exists(os.path.join(data_dir, PORTABLE_MARK)) and older:
+        shutil.copytree(os.path.join(parent, older[0], "Data"), data_dir, dirs_exist_ok=True)
+    os.makedirs(data_dir, exist_ok=True)
+    with open(os.path.join(data_dir, PORTABLE_MARK), "w", encoding="utf-8") as f:
+        f.write("[Tidbyt Mirror]\nportable=1\nversion=%s\n" % VERSION)
+    target = os.path.join(app, os.path.basename(exe))
+    if os.path.normcase(target) != os.path.normcase(exe):
+        shutil.copyfile(exe, target)
+    return target
+
+
 def setup_window():
-    """First start of the .exe: install it in a folder (with shortcuts) or run it portable, and pick
-    where its data (token, app settings, pictures) is kept. Returns the exe to start, or None."""
+    r"""First start of the .exe. Two choices:
+      Install  - copies the program to an install folder (default %LOCALAPPDATA%\Programs\Tidbyt Mirror)
+                 with shortcuts and a Settings > Apps entry; data in a "Tidbyt Mirror" folder (default
+                 %LOCALAPPDATA%\TidbytMirror); both remembered in the registry (APP_KEY).
+      Portable - makes "<chosen folder>\Tidbyt Mirror <version>\" holding the program and a Data folder,
+                 like other portable apps; nothing in the registry, no shortcuts.
+    Returns the program to start, or None."""
     exe = sys.executable
     here = os.path.dirname(exe)
+    portable_name = "Tidbyt Mirror %s" % VERSION
     root = tk.Tk()
     root.title("Tidbyt Mirror %s setup" % VERSION)
     try:
-        os.makedirs(os.path.dirname(LOCAL_DATA), exist_ok=True)
         ico = os.path.join(os.environ.get("TEMP") or here, "tidbyt_mirror_setup.ico")
         if write_icon(ico):
             root.iconbitmap(default=ico)
+            root.after(2000, lambda: os.path.exists(ico) and os.remove(ico))  # loaded by then; leave nothing
     except (OSError, tk.TclError):
         pass
     root.resizable(False, False)
     mode = tk.StringVar(value="install")
     folder = tk.StringVar(value=PROGRAMS)
     data = tk.StringVar(value=LOCAL_DATA)
+    note = tk.StringVar()
     desktop, startmenu, autostart = tk.BooleanVar(value=True), tk.BooleanVar(value=True), tk.BooleanVar(value=False)
     result = {}
     pad = {"padx": 10, "pady": 3, "sticky": "w"}
+
+    def portable_dir():
+        return os.path.join(os.path.normpath(folder.get()), portable_name)
+
+    def refresh(*_):
+        if mode.get() == "portable":
+            data.set(os.path.join(portable_dir(), "Data"))
+            note.set("Creates the folder  %s\n"
+                     "with the program to double-click (TidbytMirror-%s-windows.exe) and its Data folder."
+                     % (portable_dir(), VERSION))
+        else:
+            note.set("The data folder keeps your Tidbyt key, app settings and pictures. "
+                     "Choosing an existing one keeps its settings.")
 
     def pick(var):
         from tkinter import filedialog
         chosen = filedialog.askdirectory(initialdir=var.get() if os.path.isdir(var.get()) else here)
         if chosen:
-            var.set(os.path.normpath(chosen))
+            chosen = os.path.normpath(chosen)
+            var.set(chosen if mode.get() == "portable" else app_subfolder(chosen))
+        refresh()
 
     def mode_changed():
         portable = mode.get() == "portable"
+        folder_label.configure(text="Create it in" if portable else "Install folder")
         folder.set(here if portable else PROGRAMS)
-        data.set(os.path.join(here, "Tidbyt Mirror data") if portable else LOCAL_DATA)
+        if not portable:
+            data.set(LOCAL_DATA)
         for w in install_only:
             w.configure(state="disabled" if portable else "normal")
+        ok.configure(text="Create and start" if portable else "Install and start")
+        refresh()
 
     ttk.Label(root, text="How do you want to use Tidbyt Mirror on this PC?").grid(row=0, column=0, columnspan=3, **pad)
-    ttk.Radiobutton(root, text="Install it (adds shortcuts; you can delete this downloaded file afterwards)",
-                    variable=mode, value="install", command=mode_changed).grid(row=1, column=0, columnspan=3, **pad)
-    ttk.Radiobutton(root, text="Portable (runs from where this file is, nothing is installed)",
+    ttk.Radiobutton(root, text="Install it (shortcuts, listed in Settings > Apps; you can delete this downloaded "
+                               "file afterwards)", variable=mode, value="install",
+                    command=mode_changed).grid(row=1, column=0, columnspan=3, **pad)
+    ttk.Radiobutton(root, text="Portable (its own folder with the program and its data; nothing is installed)",
                     variable=mode, value="portable", command=mode_changed).grid(row=2, column=0, columnspan=3, **pad)
-    ttk.Label(root, text="Install folder").grid(row=3, column=0, **pad)
-    e1 = ttk.Entry(root, textvariable=folder, width=60)
+    folder_label = ttk.Label(root, text="Install folder")
+    folder_label.grid(row=3, column=0, **pad)
+    e1 = ttk.Entry(root, textvariable=folder, width=64)
     e1.grid(row=3, column=1, **pad)
-    b1 = ttk.Button(root, text="Browse...", command=lambda: pick(folder))
-    b1.grid(row=3, column=2, **pad)
+    e1.bind("<KeyRelease>", refresh)
+    ttk.Button(root, text="Browse...", command=lambda: pick(folder)).grid(row=3, column=2, **pad)
     ttk.Label(root, text="Data folder").grid(row=4, column=0, **pad)
-    ttk.Entry(root, textvariable=data, width=60).grid(row=4, column=1, **pad)
-    ttk.Button(root, text="Browse...", command=lambda: pick(data)).grid(row=4, column=2, **pad)
-    ttk.Label(root, text="(the data folder keeps your Tidbyt key, app settings and pictures; "
-                         "choosing an existing one keeps its settings)", foreground="#666").grid(
+    e2 = ttk.Entry(root, textvariable=data, width=64)
+    e2.grid(row=4, column=1, **pad)
+    b2 = ttk.Button(root, text="Browse...", command=lambda: pick(data))
+    b2.grid(row=4, column=2, **pad)
+    ttk.Label(root, textvariable=note, foreground="#666", wraplength=470, justify="left").grid(
         row=5, column=1, columnspan=2, **pad)
     c1 = ttk.Checkbutton(root, text="Desktop shortcut", variable=desktop)
     c2 = ttk.Checkbutton(root, text="Start menu shortcut", variable=startmenu)
     c3 = ttk.Checkbutton(root, text="Start with Windows", variable=autostart)
     for i, c in enumerate((c1, c2, c3)):
         c.grid(row=6 + i, column=1, **pad)
-    install_only = (e1, b1, c1, c2, c3)
+    install_only = (e2, b2, c1, c2, c3)
 
     def go():
         try:
-            target = exe
-            os.makedirs(data.get(), exist_ok=True)
-            if mode.get() == "install":
-                dest = folder.get()
-                os.makedirs(dest, exist_ok=True)
-                # an older version still running would keep this one from starting
-                # (only copies inside the install folder, never this one or its launcher)
-                ps = ("Get-Process | Where-Object { $_.Path -like '%s\\TidbytMirror-*' -and $_.Id -ne %d "
-                      "-and $_.Id -ne %d } | Stop-Process -Force") % (dest.replace("'", "''"), os.getpid(), os.getppid())
-                subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
-                               stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
-                for old in os.listdir(dest):
-                    if old.startswith("TidbytMirror-") and old.endswith(".exe") and old != os.path.basename(exe):
-                        try:
-                            os.remove(os.path.join(dest, old))
-                        except OSError:
-                            pass
-                target = os.path.join(dest, os.path.basename(exe))
-                if os.path.normcase(target) != os.path.normcase(exe):
-                    import shutil
-                    shutil.copyfile(exe, target)
-                wanted = {"desktop": desktop.get(), "startmenu": startmenu.get(), "autostart": autostart.get()}
-                for key, place in shortcut_places():
-                    link = os.path.join(place, "Tidbyt Mirror.lnk")
-                    if wanted[key]:
-                        os.makedirs(place, exist_ok=True)
-                        make_shortcut(link, target)
-                    elif os.path.exists(link):
-                        os.remove(link)
-                start = shortcut_places()[1][1]
-                os.makedirs(start, exist_ok=True)
-                make_shortcut(os.path.join(start, "Uninstall Tidbyt Mirror.lnk"), target, "--uninstall")
-                register_uninstall(target)
-            with open(os.path.join(os.path.dirname(target), EXE_CONFIG), "w", encoding="utf-8") as f:
-                json.dump({"data": data.get(), "portable": mode.get() == "portable"}, f, indent=1)
-            result["exe"] = target
+            if mode.get() == "portable":
+                result["exe"] = result["show"] = setup_portable(exe, folder.get())
+            else:
+                result["exe"] = setup_install(exe, folder.get(), data.get(), desktop.get(), startmenu.get(),
+                                              autostart.get())
             root.destroy()
         except OSError as e:
             from tkinter import messagebox
@@ -1736,8 +1834,10 @@ def setup_window():
     ttk.Button(buttons, text="Cancel", command=root.destroy).pack(side="right", padx=4)
     ok = ttk.Button(buttons, text="Install and start", command=go)
     ok.pack(side="right", padx=4)
-    mode.trace_add("write", lambda *_: ok.configure(text="Start" if mode.get() == "portable" else "Install and start"))
+    refresh()
     root.mainloop()
+    if result.get("show"):  # open the new portable folder with the program selected, so it's clear what to run
+        subprocess.Popen(["explorer", "/select,", result["show"]], stdin=subprocess.DEVNULL)
     return result.get("exe")
 
 
@@ -1768,23 +1868,20 @@ def uninstall():
                "Choose No to keep them for a later install.)" % DATA)
     exe = sys.executable
     here = os.path.dirname(exe)
-    ps = ("Get-Process | Where-Object { $_.Path -like '%s\\TidbytMirror-*' -and $_.Id -ne %d -and $_.Id -ne %d } "
-          "| Stop-Process -Force") % (here.replace("'", "''"), os.getpid(), os.getppid())
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
-                   stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    stop_copies_in(here)
     for _, place in shortcut_places():
         for name in ("Tidbyt Mirror.lnk", "Uninstall Tidbyt Mirror.lnk"):
             try:
                 os.remove(os.path.join(place, name))
             except OSError:
                 pass
+    import winreg
     try:
-        import winreg
         winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
     except OSError:
         pass
     try:
-        os.remove(os.path.join(here, EXE_CONFIG))
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, APP_KEY)
     except OSError:
         pass
     if wipe and DATA:
@@ -1806,6 +1903,16 @@ def main():
     if FROZEN and "--uninstall" in sys.argv:
         if DATA is not None:
             uninstall()
+        return
+    if FROZEN and ("--setup-portable" in sys.argv or "--setup-install" in sys.argv):
+        # without the setup window:  --setup-portable <folder>
+        #                            --setup-install <install folder> <data folder> [--no-shortcuts]
+        if "--setup-portable" in sys.argv:
+            setup_portable(sys.executable, sys.argv[sys.argv.index("--setup-portable") + 1])
+        else:
+            n = sys.argv.index("--setup-install")
+            shortcuts = "--no-shortcuts" not in sys.argv
+            setup_install(sys.executable, sys.argv[n + 1], app_subfolder(sys.argv[n + 2]), shortcuts, shortcuts)
         return
     if FROZEN and DATA is None:
         if len(sys.argv) > 1:
