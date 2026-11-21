@@ -58,7 +58,38 @@ final class Player {
         this.context = context;
         this.view = view;
         this.prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE);
+        seedSettings();
         applyLook();
+    }
+
+    /**
+     * First start on a new device: the setup-menu choices of the original TV (Nov 2026), so every
+     * install looks the same. Only fills in what is missing, so it never changes a device's own choices.
+     */
+    private void seedSettings() {
+        if (prefs.getBoolean("seeded", false)) {
+            return;
+        }
+        SharedPreferences.Editor edit = prefs.edit();
+        String[] ints = {"brightness", "unlit", "frame_thickness", "frame_brightness", "wood", "tint_hue"};
+        int[] values = {40, 30, 120, 85, 1, -1};
+        for (int i = 0; i < ints.length; i++) {
+            if (!prefs.contains(ints[i])) {
+                edit.putInt(ints[i], values[i]);
+            }
+        }
+        if (!prefs.contains("frame")) {
+            edit.putBoolean("frame", true);
+        }
+        if (!prefs.contains("hidden")) {
+            Set<String> hidden = new HashSet<>();
+            for (String id : new String[] {"store:iconote", "store:espn-news", "store:wantedposter",
+                    "store:hurricanetracker"}) {
+                hidden.add(id);
+            }
+            edit.putStringSet("hidden", hidden);
+        }
+        edit.putBoolean("seeded", true).apply();
     }
 
     SharedPreferences prefs() {

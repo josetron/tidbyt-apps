@@ -4,6 +4,11 @@ Builds the Tidbyt Mirror Android TV app without Gradle, using only the Android S
   python android_tv/build.py              -> android_tv/build/tidbyt-mirror.apk
   python android_tv/build.py --install    also installs it on the device adb sees (or pass
                                           --device 192.168.68.88:5555) and starts it
+  python android_tv/build.py --copy-to "Z:\\My Apps\\Tidbyt"
+                                          also saves it there as TidbytMirror-<version>-androidtv.apk
+  --debuggable                            lets "adb shell run-as" read the app's saved settings
+
+The version is VERSION in tools/tidbyt_mirror.py, shared with the Windows .exe.
 
 Needs: the Android SDK (build-tools + a platform; ANDROID_HOME, or E:\\Android\\Sdk, or the default
 %LOCALAPPDATA%\\Android\\Sdk) and a JDK (JAVA_HOME, or Android Studio's bundled one).
@@ -13,6 +18,7 @@ on first use), which is fine for installing on your own TV.
 
 import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +27,9 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUILD = os.path.join(HERE, "build")
 PACKAGE = "com.josetron.tidbytmirror"
+with open(os.path.join(os.path.dirname(HERE), "tools", "tidbyt_mirror.py"), encoding="utf-8") as _f:
+    VERSION = re.search(r'^VERSION = "([^"]+)"', _f.read(), re.M).group(1)
+VERSION_CODE = sum(int(n) * m for n, m in zip(VERSION.split("."), (10000, 100, 1)))  # 1.2.3 -> 10203
 EXE = ".exe" if os.name == "nt" else ""
 
 
@@ -67,7 +76,8 @@ def main():
     unsigned = os.path.join(BUILD, "unsigned.apk")
     run(aapt2, "link", "-o", unsigned, "-I", android_jar, "--manifest", os.path.join(HERE, "AndroidManifest.xml"),
         "--java", os.path.join(BUILD, "gen"), "--min-sdk-version", "23", "--target-sdk-version", "34",
-        "--version-code", "1", "--version-name", "1.0", res_zip)
+        "--version-code", str(VERSION_CODE), "--version-name", VERSION,
+        *(["--debug-mode"] if "--debuggable" in sys.argv else []), res_zip)
 
     # Java -> classes -> dex
     sources = glob.glob(os.path.join(HERE, "src", "**", "*.java"), recursive=True) + \
@@ -92,7 +102,11 @@ def main():
     apk = os.path.join(BUILD, "tidbyt-mirror.apk")
     run(java, "-jar", signer_jar, "sign", "--ks", keystore, "--ks-pass", "pass:android", "--key-pass", "pass:android",
         "--ks-key-alias", "androiddebugkey", "--out", apk, aligned)
-    print("built %s (%d KB)" % (apk, os.path.getsize(apk) // 1024))
+    print("built %s, version %s (%d KB)" % (apk, VERSION, os.path.getsize(apk) // 1024))
+    if "--copy-to" in sys.argv:
+        dest = os.path.join(sys.argv[sys.argv.index("--copy-to") + 1], "TidbytMirror-%s-androidtv.apk" % VERSION)
+        shutil.copyfile(apk, dest)
+        print("saved %s" % dest)
 
     if "--install" in sys.argv:
         adb = [os.path.join(sdk, "platform-tools", "adb" + EXE)]

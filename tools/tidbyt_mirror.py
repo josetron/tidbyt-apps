@@ -69,16 +69,31 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, ".cache", "mirror")
-HOME = os.path.join(os.path.expanduser("~"), ".tidbyt")
+VERSION = "1.0.0"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
+EXE_CONFIG = "TidbytMirror.json"  # beside the .exe once set up: {"data": folder, "portable": bool}
+if FROZEN:
+    # the .exe unpacks its apps, store apps and pixlet to a temporary folder; everything it keeps
+    # (token, app settings, pictures, window position) goes to the data folder chosen at setup
+    ROOT = sys._MEIPASS
+    try:
+        with open(os.path.join(os.path.dirname(sys.executable), EXE_CONFIG), encoding="utf-8") as _f:
+            DATA = json.load(_f)["data"]
+    except (OSError, ValueError, KeyError):
+        DATA = None  # not set up yet: main() shows the setup window
+    HOME = DATA or ""
+else:
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA = os.path.join(ROOT, ".cache")
+    HOME = os.path.join(os.path.expanduser("~"), ".tidbyt")
+OUT = os.path.join(DATA or "", "mirror")
 DEVICE_ID = "urgently-principal-smashing-hippo-90b"
 LOCK_PORT = 8765  # only used to make sure one mirror runs at a time
 RELAY_PORT = 8766  # the Android TV app sends setting changes here (home network only)
-PIXLET = os.environ.get("PIXLET", "pixlet")
+PIXLET = os.path.join(ROOT, "pixlet.exe") if FROZEN else os.environ.get("PIXLET", "pixlet")
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # keep pixlet from flashing a console window
 
-COMMUNITY = os.path.join(ROOT, ".cache", "community")
+COMMUNITY = os.path.join(ROOT, "community") if FROZEN else os.path.join(ROOT, ".cache", "community")
 COMMUNITY_URL = "https://github.com/tidbyt/community.git"
 STORE_EVERY = 1800  # seconds between refreshes of a store app
 STORE_CONFIG = {    # passed to every store app; apps ignore what they don't use
@@ -134,7 +149,7 @@ def movies_config():
     if key:
         os.environ["TMDB_API_KEY"] = key
         import movies_snapshot
-        snap = movies_snapshot.build(os.path.join(ROOT, ".cache", "imdb"))
+        snap = movies_snapshot.build(os.path.join(DATA, "imdb"))
     else:
         snap, note = fixture("now_playing"), "sample movies"
     movies = snap["movies"]
@@ -250,7 +265,8 @@ def fetch_store():
     ids = sorted({i["appID"] for i in installs if i.get("appID")})
 
     def git(*args, cwd=COMMUNITY):
-        return subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True)
+        return subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
 
     if not os.path.isdir(os.path.join(COMMUNITY, ".git")):
         os.makedirs(os.path.dirname(COMMUNITY), exist_ok=True)
@@ -317,7 +333,7 @@ def fetch_schema(star):
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     proc = subprocess.Popen([PIXLET, "serve", "--port", str(port), star], stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+                            stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
     try:
         for _ in range(40):
             time.sleep(0.25)
@@ -336,8 +352,8 @@ def fetch_schema(star):
 # Settings published for the Android TV app (PUBLIC: the mirror-settings branch on GitHub)
 # ---------------------------------------------------------------------------
 
-SETTINGS_REPO = os.path.join(ROOT, ".cache", "settings_repo")  # working copy of the mirror-settings branch
-FEED_REPO = os.path.join(ROOT, ".cache", "feed_repo")          # working copy of the mirror-feed branch
+SETTINGS_REPO = os.path.join(DATA or "", "settings_repo")  # working copy of the mirror-settings branch
+FEED_REPO = os.path.join(DATA or "", "feed_repo")          # working copy of the mirror-feed branch
 _published = None
 
 
@@ -348,7 +364,7 @@ def repo_slug():
         return slug
     try:
         url = subprocess.run(["git", "-C", ROOT, "remote", "get-url", "origin"], capture_output=True, text=True,
-                             creationflags=NO_WINDOW).stdout.strip()
+                             stdin=subprocess.DEVNULL, creationflags=NO_WINDOW).stdout.strip()
         m = re.search(r"github\.com[:/](.+?)(?:\.git)?$", url)
         if m:
             return m.group(1)
@@ -383,7 +399,8 @@ def git(path, *args):
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
     cmd = ["git", "-C", path, "-c", "credential.helper=", "-c", "credential.helper=manager",
            "-c", "user.name=Tidbyt Mirror", "-c", "user.email=tidbyt-mirror@users.noreply.github.com"] + list(args)
-    return subprocess.run(cmd, capture_output=True, text=True, env=env, creationflags=NO_WINDOW)
+    return subprocess.run(cmd, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,
+                          creationflags=NO_WINDOW)
 
 
 def branch_checkout(path, branch):
@@ -537,7 +554,8 @@ def tv_save(key, raw):
 
     ok = publish_settings(key, values)
     if ok:  # refresh the TV's picture in the background (a separate process: it renders in feed mode)
-        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--feed-one", key], creationflags=NO_WINDOW)
+        me = [sys.executable] if FROZEN else [sys.executable, os.path.abspath(__file__)]
+        subprocess.Popen(me + ["--feed-one", key], stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
     return ok
 
 
@@ -607,6 +625,21 @@ def render(iid, star, build):
     try:
         # the public feed only uses settings published on purpose from the TV; never this PC's private ones
         mine = published_settings().get(iid, {}) if FEED else load_app_settings().get(iid, {})
+        if iid == "nowplaying" and not FEED and not mine and not read_secret("tmdb_api_key.txt"):
+            # no TMDB key on this PC: show the cloud's picture (rendered by GitHub Actions with the key)
+            url = "https://raw.githubusercontent.com/%s/mirror-feed/nowplaying.gif" % repo_slug()
+            try:
+                with urllib.request.urlopen(url, timeout=30) as r, open(tmp, "wb") as f:
+                    f.write(r.read())
+                os.replace(tmp, gif_path(iid))
+                with lock:
+                    apps[iid]["version"] += 1
+                    apps[iid]["note"], apps[iid]["error"] = "", ""
+                    apps[iid]["tries"] = apps[iid].get("tries", 0) + 1
+                log("%s: downloaded from the cloud feed" % iid)
+                return
+            except Exception as e:
+                log("%s: cloud picture failed (%s), using sample movies" % (iid, e))
         # builders that compute data for a setting (Dark Sky's ZIP) take the settings
         config, note = build(mine) if build.__code__.co_argcount else build()
         for k, v in mine.items():
@@ -615,7 +648,8 @@ def render(iid, star, build):
         if mine and note == "default settings":
             note = ""
         args = [PIXLET, "render", star] + ["%s=%s" % kv for kv in config.items()] + ["--gif", "-o", tmp]
-        r = subprocess.run(args, capture_output=True, text=True, timeout=180, creationflags=NO_WINDOW)
+        r = subprocess.run(args, capture_output=True, text=True, timeout=180, stdin=subprocess.DEVNULL,
+                           creationflags=NO_WINDOW)
         if r.returncode != 0 or not os.path.exists(tmp):
             raise RuntimeError((r.stderr or r.stdout).strip()[-200:] or "pixlet render failed")
         if os.path.getsize(tmp) < 20:  # the app chose to show nothing right now
@@ -1520,7 +1554,221 @@ def build_feed(out_dir):
     return len(entries)
 
 
+def seed_from_exe():
+    """First run of the .exe on a PC: put the Tidbyt token, app settings and window layout it was
+    built with in place. Files already there are never overwritten."""
+    import shutil
+    seed = os.path.join(ROOT, "seed")
+    for name, folder in (("api_token.txt", HOME), ("mirror_settings.json", HOME), ("window.json", OUT)):
+        src, dst = os.path.join(seed, name), os.path.join(folder, name)
+        if os.path.exists(src) and not os.path.exists(dst):
+            os.makedirs(folder, exist_ok=True)
+            shutil.copyfile(src, dst)
+
+
+PROGRAMS = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Programs", "Tidbyt Mirror")
+LOCAL_DATA = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "TidbytMirror")
+
+
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\TidbytMirror"  # Settings > Apps
+
+
+def shortcut_places():
+    """(name, folder) of every shortcut setup can make: desktop, Start menu, Startup (start with Windows)."""
+    start = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs")
+    return [("desktop", os.path.join(os.path.expanduser("~"), "Desktop")), ("startmenu", start),
+            ("autostart", os.path.join(start, "Startup"))]
+
+
+def make_shortcut(link, target, arguments=""):
+    """A Windows shortcut (.lnk), made by PowerShell's WScript.Shell."""
+    ps = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut('%s'); $s.TargetPath = '%s'; "
+          "$s.Arguments = '%s'; $s.WorkingDirectory = '%s'; $s.Save()") % (
+        link.replace("'", "''"), target.replace("'", "''"), arguments.replace("'", "''"),
+        os.path.dirname(target).replace("'", "''"))
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], stdin=subprocess.DEVNULL,
+                   capture_output=True, creationflags=NO_WINDOW)
+
+
+def setup_window():
+    """First start of the .exe: install it in a folder (with shortcuts) or run it portable, and pick
+    where its data (token, app settings, pictures) is kept. Returns the exe to start, or None."""
+    exe = sys.executable
+    here = os.path.dirname(exe)
+    root = tk.Tk()
+    root.title("Tidbyt Mirror %s setup" % VERSION)
+    root.resizable(False, False)
+    mode = tk.StringVar(value="install")
+    folder = tk.StringVar(value=PROGRAMS)
+    data = tk.StringVar(value=LOCAL_DATA)
+    desktop, startmenu, autostart = tk.BooleanVar(value=True), tk.BooleanVar(value=True), tk.BooleanVar(value=False)
+    result = {}
+    pad = {"padx": 10, "pady": 3, "sticky": "w"}
+
+    def pick(var):
+        from tkinter import filedialog
+        chosen = filedialog.askdirectory(initialdir=var.get() if os.path.isdir(var.get()) else here)
+        if chosen:
+            var.set(os.path.normpath(chosen))
+
+    def mode_changed():
+        portable = mode.get() == "portable"
+        folder.set(here if portable else PROGRAMS)
+        data.set(os.path.join(here, "Tidbyt Mirror data") if portable else LOCAL_DATA)
+        for w in install_only:
+            w.configure(state="disabled" if portable else "normal")
+
+    ttk.Label(root, text="How do you want to use Tidbyt Mirror on this PC?").grid(row=0, column=0, columnspan=3, **pad)
+    ttk.Radiobutton(root, text="Install it (adds shortcuts; you can delete this downloaded file afterwards)",
+                    variable=mode, value="install", command=mode_changed).grid(row=1, column=0, columnspan=3, **pad)
+    ttk.Radiobutton(root, text="Portable (runs from where this file is, nothing is installed)",
+                    variable=mode, value="portable", command=mode_changed).grid(row=2, column=0, columnspan=3, **pad)
+    ttk.Label(root, text="Install folder").grid(row=3, column=0, **pad)
+    e1 = ttk.Entry(root, textvariable=folder, width=60)
+    e1.grid(row=3, column=1, **pad)
+    b1 = ttk.Button(root, text="Browse...", command=lambda: pick(folder))
+    b1.grid(row=3, column=2, **pad)
+    ttk.Label(root, text="Data folder").grid(row=4, column=0, **pad)
+    ttk.Entry(root, textvariable=data, width=60).grid(row=4, column=1, **pad)
+    ttk.Button(root, text="Browse...", command=lambda: pick(data)).grid(row=4, column=2, **pad)
+    ttk.Label(root, text="(the data folder keeps your Tidbyt key, app settings and pictures; "
+                         "choosing an existing one keeps its settings)", foreground="#666").grid(
+        row=5, column=1, columnspan=2, **pad)
+    c1 = ttk.Checkbutton(root, text="Desktop shortcut", variable=desktop)
+    c2 = ttk.Checkbutton(root, text="Start menu shortcut", variable=startmenu)
+    c3 = ttk.Checkbutton(root, text="Start with Windows", variable=autostart)
+    for i, c in enumerate((c1, c2, c3)):
+        c.grid(row=6 + i, column=1, **pad)
+    install_only = (e1, b1, c1, c2, c3)
+
+    def go():
+        try:
+            target = exe
+            os.makedirs(data.get(), exist_ok=True)
+            if mode.get() == "install":
+                dest = folder.get()
+                os.makedirs(dest, exist_ok=True)
+                # an older version still running would keep this one from starting
+                # (only copies inside the install folder, never this one or its launcher)
+                ps = ("Get-Process | Where-Object { $_.Path -like '%s\\TidbytMirror-*' -and $_.Id -ne %d "
+                      "-and $_.Id -ne %d } | Stop-Process -Force") % (dest.replace("'", "''"), os.getpid(), os.getppid())
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                               stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+                for old in os.listdir(dest):
+                    if old.startswith("TidbytMirror-") and old.endswith(".exe") and old != os.path.basename(exe):
+                        try:
+                            os.remove(os.path.join(dest, old))
+                        except OSError:
+                            pass
+                target = os.path.join(dest, os.path.basename(exe))
+                if os.path.normcase(target) != os.path.normcase(exe):
+                    import shutil
+                    shutil.copyfile(exe, target)
+                wanted = {"desktop": desktop.get(), "startmenu": startmenu.get(), "autostart": autostart.get()}
+                for key, place in shortcut_places():
+                    link = os.path.join(place, "Tidbyt Mirror.lnk")
+                    if wanted[key]:
+                        os.makedirs(place, exist_ok=True)
+                        make_shortcut(link, target)
+                    elif os.path.exists(link):
+                        os.remove(link)
+                start = shortcut_places()[1][1]
+                os.makedirs(start, exist_ok=True)
+                make_shortcut(os.path.join(start, "Uninstall Tidbyt Mirror.lnk"), target, "--uninstall")
+                register_uninstall(target)
+            with open(os.path.join(os.path.dirname(target), EXE_CONFIG), "w", encoding="utf-8") as f:
+                json.dump({"data": data.get(), "portable": mode.get() == "portable"}, f, indent=1)
+            result["exe"] = target
+            root.destroy()
+        except OSError as e:
+            from tkinter import messagebox
+            messagebox.showerror("Tidbyt Mirror", "Could not set up there:\n%s" % e)
+
+    buttons = ttk.Frame(root)
+    buttons.grid(row=9, column=0, columnspan=3, padx=10, pady=10, sticky="e")
+    ttk.Button(buttons, text="Cancel", command=root.destroy).pack(side="right", padx=4)
+    ok = ttk.Button(buttons, text="Install and start", command=go)
+    ok.pack(side="right", padx=4)
+    mode.trace_add("write", lambda *_: ok.configure(text="Start" if mode.get() == "portable" else "Install and start"))
+    root.mainloop()
+    return result.get("exe")
+
+
+def register_uninstall(exe):
+    """Lists the installed copy in Windows Settings > Apps, whose Uninstall button runs --uninstall."""
+    import winreg
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY) as k:
+        for name, value in (("DisplayName", "Tidbyt Mirror"), ("DisplayVersion", VERSION),
+                            ("Publisher", "josetron"), ("DisplayIcon", exe),
+                            ("InstallLocation", os.path.dirname(exe)),
+                            ("UninstallString", '"%s" --uninstall' % exe)):
+            winreg.SetValueEx(k, name, 0, winreg.REG_SZ, value)
+        for name in ("NoModify", "NoRepair"):
+            winreg.SetValueEx(k, name, 0, winreg.REG_DWORD, 1)
+
+
+def uninstall():
+    """Removes the installed copy: shortcuts, the Settings > Apps entry, the program file and (if
+    wanted) the data folder with the Tidbyt key, app settings and pictures."""
+    import ctypes
+
+    def ask(text, flags=0x4 | 0x20):  # Yes/No with a question mark; always in front (topmost, foreground)
+        return ctypes.windll.user32.MessageBoxW(None, text, "Uninstall Tidbyt Mirror", flags | 0x40000 | 0x10000) == 6
+
+    if not ask("Remove Tidbyt Mirror %s from this PC?" % VERSION):
+        return
+    wipe = ask("Also delete its data folder?\n%s\n\n(It keeps your Tidbyt key, app settings and pictures. "
+               "Choose No to keep them for a later install.)" % DATA)
+    exe = sys.executable
+    here = os.path.dirname(exe)
+    ps = ("Get-Process | Where-Object { $_.Path -like '%s\\TidbytMirror-*' -and $_.Id -ne %d -and $_.Id -ne %d } "
+          "| Stop-Process -Force") % (here.replace("'", "''"), os.getpid(), os.getppid())
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                   stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    for _, place in shortcut_places():
+        for name in ("Tidbyt Mirror.lnk", "Uninstall Tidbyt Mirror.lnk"):
+            try:
+                os.remove(os.path.join(place, name))
+            except OSError:
+                pass
+    try:
+        import winreg
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
+    except OSError:
+        pass
+    try:
+        os.remove(os.path.join(here, EXE_CONFIG))
+    except OSError:
+        pass
+    if wipe and DATA:
+        import shutil
+        shutil.rmtree(DATA, ignore_errors=True)
+    ask("Tidbyt Mirror was removed.", 0x40)  # OK with an information icon
+    # a running program cannot delete itself: a hidden command does it a few seconds after this exits
+    # (started after the message above, which waits for OK, so the program has really exited by then)
+    cmd = 'ping -n 5 127.0.0.1 >nul & del /f /q "%s" & rmdir "%s"' % (exe, here)
+    detached = NO_WINDOW | 0x00000008 | 0x00000200  # no window, detached, new process group
+    try:  # also leave the .exe's job, which would otherwise close the command together with the program
+        subprocess.Popen("cmd /c " + cmd, stdin=subprocess.DEVNULL, close_fds=True,
+                         creationflags=detached | 0x01000000)
+    except OSError:
+        subprocess.Popen("cmd /c " + cmd, stdin=subprocess.DEVNULL, close_fds=True, creationflags=detached)
+
+
 def main():
+    if FROZEN and "--uninstall" in sys.argv:
+        if DATA is not None:
+            uninstall()
+        return
+    if FROZEN and DATA is None:
+        if len(sys.argv) > 1:
+            sys.exit("Tidbyt Mirror is not set up yet: start it without options first")
+        exe = setup_window()
+        if exe:  # start the set-up copy, which now finds its data folder
+            subprocess.Popen([exe], cwd=os.path.dirname(exe), stdin=subprocess.DEVNULL)
+        return
+    if FROZEN:
+        seed_from_exe()
     if "--feed-one" in sys.argv:
         os.makedirs(OUT, exist_ok=True)
         if sys.stdout is None:
@@ -1533,7 +1781,7 @@ def main():
     if "--fetch-store" in sys.argv:
         fetch_store()
         return
-    if sys.stdout is None:  # started with pythonw (no console): log to a file instead
+    if sys.stdout is None or FROZEN:  # pythonw or the .exe (no console): log to a file instead
         sys.stdout = sys.stderr = open(os.path.join(OUT, "mirror.log"), "w", encoding="utf-8")
     guard = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if os.name == "nt":
@@ -1543,6 +1791,7 @@ def main():
     except OSError:
         log("Tidbyt Mirror is already running")
         return
+    log("Tidbyt Mirror %s" % VERSION)
     threading.Thread(target=worker, daemon=True).start()
     start_relay()
     Mirror(keep_menu="--menu" in sys.argv).root.mainloop()
