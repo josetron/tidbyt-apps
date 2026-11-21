@@ -69,7 +69,7 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.3"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.4"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
 APP_KEY = r"Software\TidbytMirror"  # installed copy: {"InstallFolder", "DataFolder"} (HKEY_CURRENT_USER)
 PORTABLE_MARK = "portable.ini"     # inside the Data folder next to a portable copy
@@ -1706,10 +1706,11 @@ def setup_install(exe, dest, data_dir, desktop=True, startmenu=True, autostart=F
     return target
 
 
-def setup_portable(exe, parent):
+def setup_portable(exe, parent, autostart=False):
     """Portable: makes <parent>/Tidbyt Mirror <version>/ with the program and a Data folder (marked by
     PORTABLE_MARK). An update next to an older portable folder copies that folder's Data across.
-    Returns the program in the new folder."""
+    autostart: a shortcut in the Startup folder starts this copy with Windows (pointed at the new copy
+    on an update; left as it is when not asked for). Returns the program in the new folder."""
     import shutil
     parent = os.path.normpath(parent)
     name = "Tidbyt Mirror %s" % VERSION
@@ -1717,7 +1718,8 @@ def setup_portable(exe, parent):
     data_dir = os.path.join(app, "Data")
     older = sorted((d for d in (os.listdir(parent) if os.path.isdir(parent) else [])
                     if d.startswith("Tidbyt Mirror ") and d != name
-                    and os.path.exists(os.path.join(parent, d, "Data", PORTABLE_MARK))), reverse=True)
+                    and os.path.exists(os.path.join(parent, d, "Data", PORTABLE_MARK))),
+                   key=lambda d: [int(n) if n.isdigit() else 0 for n in d.split()[-1].split(".")], reverse=True)
     os.makedirs(app, exist_ok=True)
     if not os.path.exists(os.path.join(data_dir, PORTABLE_MARK)) and older:
         shutil.copytree(os.path.join(parent, older[0], "Data"), data_dir, dirs_exist_ok=True)
@@ -1727,6 +1729,10 @@ def setup_portable(exe, parent):
     target = os.path.join(app, os.path.basename(exe))
     if os.path.normcase(target) != os.path.normcase(exe):
         shutil.copyfile(exe, target)
+    if autostart:
+        startup = shortcut_places()[2][1]
+        os.makedirs(startup, exist_ok=True)
+        make_shortcut(os.path.join(startup, "Tidbyt Mirror.lnk"), target)
     return target
 
 
@@ -1815,12 +1821,12 @@ def setup_window():
     c3 = ttk.Checkbutton(root, text="Start with Windows", variable=autostart)
     for i, c in enumerate((c1, c2, c3)):
         c.grid(row=6 + i, column=1, **pad)
-    install_only = (e2, b2, c1, c2, c3)
+    install_only = (e2, b2, c1, c2)  # "Start with Windows" works for a portable copy too
 
     def go():
         try:
             if mode.get() == "portable":
-                result["exe"] = result["show"] = setup_portable(exe, folder.get())
+                result["exe"] = result["show"] = setup_portable(exe, folder.get(), autostart.get())
             else:
                 result["exe"] = setup_install(exe, folder.get(), data.get(), desktop.get(), startmenu.get(),
                                               autostart.get())
@@ -1905,10 +1911,11 @@ def main():
             uninstall()
         return
     if FROZEN and ("--setup-portable" in sys.argv or "--setup-install" in sys.argv):
-        # without the setup window:  --setup-portable <folder>
+        # without the setup window:  --setup-portable <folder> [--autostart]
         #                            --setup-install <install folder> <data folder> [--no-shortcuts]
         if "--setup-portable" in sys.argv:
-            setup_portable(sys.executable, sys.argv[sys.argv.index("--setup-portable") + 1])
+            setup_portable(sys.executable, sys.argv[sys.argv.index("--setup-portable") + 1],
+                           "--autostart" in sys.argv)
         else:
             n = sys.argv.index("--setup-install")
             shortcuts = "--no-shortcuts" not in sys.argv
