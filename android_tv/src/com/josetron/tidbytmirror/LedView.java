@@ -63,7 +63,7 @@ final class LedView extends View {
         startedAt = SystemClock.uptimeMillis();
         pausedAt = startedAt;
         label = name == null ? "" : name;
-        labelText = paused ? label + "  (paused)" : label;
+        labelText = label;
         labelUntil = showNames ? startedAt + 4000 : 0;
         message = null;
         invalidate();
@@ -83,13 +83,8 @@ final class LedView extends View {
         } else if (!value && paused) {
             startedAt += now - pausedAt;  // carry on from the frame it stopped at
         }
-        paused = value;
-        if (paused) {
-            showLabel(label + "  (paused)");
-        } else {
-            labelUntil = 0;
-            invalidate();
-        }
+        paused = value;  // no note on screen: the picture simply stops
+        invalidate();
     }
 
     void setBrightness(float value) {

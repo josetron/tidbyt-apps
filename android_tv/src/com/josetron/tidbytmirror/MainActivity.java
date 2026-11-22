@@ -25,7 +25,7 @@ import java.util.List;
  * Tidbyt Mirror for Android TV.
  *
  * Remote, while pictures play:
- *   Left / Right  previous / next app
+ *   Left / Right  previous / next app (also ends a pause or a hold)
  *   OK            pause (or release a held app)
  *   OK, held down hold this app: it stays on screen and keeps animating; long-press OK again to release
  *   Down          setup menu: brightness, unlit dots, app names, frame and its thickness, screen saver and its start time, hidden apps

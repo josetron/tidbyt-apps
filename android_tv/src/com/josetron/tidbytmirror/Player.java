@@ -229,11 +229,22 @@ final class Player {
     }
 
     void next() {
+        resume();
         show(index + 1);
     }
 
     void previous() {
+        resume();
         show(index - 1);
+    }
+
+    /** Left / Right end a pause or a hold: back to playing one app after another. */
+    private void resume() {
+        held = false;
+        if (paused) {
+            paused = false;
+            view.setPaused(false);
+        }
     }
 
     boolean paused() {
@@ -251,10 +262,7 @@ final class Player {
             paused = false;
             view.setPaused(false);
         }
-        Feed.Item item = current();
-        String name = item == null ? "" : item.name;
-        view.showLabel(held ? name + "  (held - long-press OK to release)" : "Playing all apps again");
-        schedule();
+        schedule();  // no note on screen
     }
 
     void setPaused(boolean value) {
