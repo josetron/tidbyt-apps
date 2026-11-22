@@ -503,6 +503,10 @@ def feed_one(key):
         digest = hashlib.sha1(f.read()).hexdigest()[:12]
     entry = {"id": key, "name": apps[key]["name"], "file": os.path.basename(gif_path(key)),
              "version": digest, "store": apps[key]["store"]}
+    if jobs[key][2] == CLOCK_EVERY:  # a clock: also its pictures for the coming minutes
+        minutes = render_minutes(key, star, build)
+        if minutes:
+            entry["minute_start"], entry["minute_files"] = minutes[0], minutes[1]
     found = False
     for i, old in enumerate(manifest.get("apps", [])):
         if old.get("id") == key:
