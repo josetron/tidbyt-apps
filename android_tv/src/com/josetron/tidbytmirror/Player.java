@@ -38,12 +38,24 @@ final class Player {
     private final List<Feed.Item> items = new ArrayList<>();  // what plays: the feed minus hidden apps
     private int index = -1;
     private boolean paused;
+    private boolean held;  // long-press OK: stay on this app, still animating
     private volatile boolean running;
 
     private final Runnable advance = new Runnable() {
         @Override
         public void run() {
             show(index + 1);
+        }
+    };
+
+    // while an app is held: a clock moves on to the picture for the new minute
+    private final Runnable nextMinute = new Runnable() {
+        @Override
+        public void run() {
+            Feed.Item item = current();
+            if (held && item != null && !item.minuteFiles.isEmpty()) {
+                show(index);
+            }
         }
     };
 
@@ -228,6 +240,23 @@ final class Player {
         return paused;
     }
 
+    boolean held() {
+        return held;
+    }
+
+    /** Hold: the app on screen stays (its animation keeps looping) until released or changed by hand. */
+    void setHeld(boolean value) {
+        held = value;
+        if (held && paused) {
+            paused = false;
+            view.setPaused(false);
+        }
+        Feed.Item item = current();
+        String name = item == null ? "" : item.name;
+        view.showLabel(held ? name + "  (held - long-press OK to release)" : "Playing all apps again");
+        schedule();
+    }
+
     void setPaused(boolean value) {
         paused = value;
         view.setPaused(value);
@@ -259,7 +288,11 @@ final class Player {
 
     private void schedule() {
         handler.removeCallbacks(advance);
-        if (!paused && running) {
+        handler.removeCallbacks(nextMinute);
+        if (held && running) {
+            long now = System.currentTimeMillis();
+            handler.postDelayed(nextMinute, 60000 - now % 60000 + 500);  // just after the minute turns
+        } else if (!paused && running) {
             long length = view.duration();
             handler.postDelayed(advance, Math.min(MAX_SHOW_MS, Math.max(length, SHOW_MS)));
         }

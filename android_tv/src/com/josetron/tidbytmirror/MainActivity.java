@@ -26,7 +26,8 @@ import java.util.List;
  *
  * Remote, while pictures play:
  *   Left / Right  previous / next app
- *   OK            pause
+ *   OK            pause (or release a held app)
+ *   OK, held down hold this app: it stays on screen and keeps animating; long-press OK again to release
  *   Down          setup menu: brightness, unlit dots, app names, frame and its thickness, screen saver and its start time, hidden apps
  *   Up            this app's menu: show or hide it on this TV, and its own settings
  *   Back          exit
@@ -61,6 +62,7 @@ public final class MainActivity extends Activity {
     private String pcBase;
     private boolean busy;
     private boolean pausedBefore;
+    private boolean okDown, okLong;             // OK pressed while pictures play: short or long press
 
     private final Runnable closeMenu = new Runnable() {
         @Override
@@ -504,6 +506,32 @@ public final class MainActivity extends Activity {
     // -- remote -------------------------------------------------------------
 
     @Override
+    public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+        if (okDown && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+            okLong = true;
+            player.setHeld(!player.held());
+            return true;
+        }
+        return super.onKeyLongPress(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (okDown && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+            okDown = false;
+            if (!okLong && !event.isCanceled() && menu == NONE) {
+                if (player.held()) {
+                    player.setHeld(false);
+                } else {
+                    player.setPaused(!player.paused());
+                }
+            }
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (menu != NONE) {
             int rows = menu == SETUP ? SETUP_ROWS : appRows();
@@ -560,6 +588,12 @@ public final class MainActivity extends Activity {
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
+                if (event.getRepeatCount() == 0) {  // short or long press: decided when it is let go
+                    event.startTracking();
+                    okDown = true;
+                    okLong = false;
+                }
+                return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 player.setPaused(!player.paused());
                 return true;
