@@ -69,7 +69,7 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.5"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.6"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
 APP_KEY = r"Software\TidbytMirror"  # installed copy: {"InstallFolder", "DataFolder"} (HKEY_CURRENT_USER)
 PORTABLE_MARK = "portable.ini"     # inside the Data folder next to a portable copy
@@ -113,6 +113,10 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # keep pixlet from flashing a 
 COMMUNITY = os.path.join(ROOT, "community") if FROZEN else os.path.join(ROOT, ".cache", "community")
 COMMUNITY_URL = "https://github.com/tidbyt/community.git"
 STORE_EVERY = 1800  # seconds between refreshes of a store app
+# Store apps that show the time: redrawn at the start of every minute (a picture is frozen at the
+# moment it was drawn, so on the 30-minute schedule a clock ran up to half an hour behind)
+CLOCK_APPS = {"big-clock", "clock-by-henry", "world-clock"}
+CLOCK_EVERY = 60
 STORE_CONFIG = {    # passed to every store app; apps ignore what they don't use
     "$tz": "America/Chicago",
     "location": json.dumps({"lat": "30.19", "lng": "-98.09", "locality": "Dripping Springs", "timezone": "America/Chicago"}),
@@ -721,7 +725,7 @@ def refresh_device():
                 if key not in apps:
                     apps[key] = {"id": key, "name": store_name(app_id), "version": 0, "note": "", "error": "",
                                  "on_device": True, "store": True}
-                    jobs[key] = (star, store_config, STORE_EVERY)
+                    jobs[key] = (star, store_config, CLOCK_EVERY if app_id in CLOCK_APPS else STORE_EVERY)
             elif key not in apps:
                 continue  # pushed by something else: no source to render
             new_order.append(key)
@@ -739,12 +743,17 @@ def worker():
         with lock:
             todo = [k for k in order if apps[k]["on_device"]]
         todo.sort(key=lambda k: apps[k]["store"])  # our own apps first, so the window starts quickly
+        clocks = [k for k in todo if jobs[k][2] == CLOCK_EVERY]
         for key in todo:  # one at a time: parallel renders time out
-            if time.time() >= due.get(key, 0):
-                star, build, every = jobs[key]
-                render(key, star, build)
-                due[key] = time.time() + every
-        time.sleep(5)
+            for k in clocks + [key]:  # clocks go first whenever their minute is up, even mid-round
+                if time.time() >= due.get(k, 0):
+                    star, build, every = jobs[k]
+                    render(k, star, build)
+                    if every == CLOCK_EVERY:
+                        due[k] = (int(time.time()) // 60 + 1) * 60 + 1  # just after the next minute starts
+                    else:
+                        due[k] = time.time() + every
+        time.sleep(1 if clocks else 5)
 
 
 # ---------------------------------------------------------------------------
@@ -1533,12 +1542,24 @@ class Mirror:
             self.root.after_cancel(self.tick_job)
         self.tick()
 
+    def reload_if_redrawn(self):
+        """While an app stays on screen (a clock left paused, say), picks up its newer picture."""
+        with lock:
+            version = apps[self.current]["version"] if self.current in apps else 0
+        if version and version != self.shown_version:
+            try:
+                self.frames = load_frames(self.current)
+                self.shown_version = version
+            except Exception as e:
+                log("%s: cannot play: %s" % (self.current, e))
+
     def tick(self):
         if not self.frames:
             return
         if self.frame_i >= len(self.frames):
             if self.paused or time.time() < self.show_until - 0.3:
                 self.frame_i = 0  # short animations loop until the app's time is up, like on the device
+                self.reload_if_redrawn()
             else:
                 self.tick_job = None
                 self.step(1)
