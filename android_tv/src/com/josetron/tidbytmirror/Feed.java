@@ -32,6 +32,14 @@ final class Feed {
         String version;
         boolean store;
         File file;
+        long minuteStart;                 // clock apps: a picture per minute, the first at this Unix time
+        List<File> minuteFiles = new ArrayList<>();
+
+        /** The picture to show now: for a clock, the one drawn for the current minute. */
+        File fileNow() {
+            long i = System.currentTimeMillis() / 60000 - minuteStart / 60;
+            return i >= 0 && i < minuteFiles.size() ? minuteFiles.get((int) i) : file;
+        }
     }
 
     private Feed() {
@@ -99,6 +107,31 @@ final class Feed {
                         }
                     } catch (Exception e) {
                         // keep the older picture, if there is one
+                    }
+                }
+                JSONArray minutes = app.optJSONArray("minute_files");
+                if (minutes != null) {
+                    item.minuteStart = app.optLong("minute_start", 0);
+                    String minuteVersion = String.valueOf(item.minuteStart);
+                    for (int m = 0; m < minutes.length(); m++) {
+                        String name = minutes.getString(m);
+                        if (name.contains("/") || name.contains("\\")) {
+                            break;
+                        }
+                        File f = new File(dir, name);
+                        wanted.add(name);
+                        if (fetch && !(f.exists() && minuteVersion.equals(versions.getString(name, null)))) {
+                            try {
+                                write(f, download(BASE + name + "?v=" + minuteVersion));
+                                versions.edit().putString(name, minuteVersion).apply();
+                            } catch (Exception e) {
+                                break;  // the rest would fail too; the main picture still plays
+                            }
+                        }
+                        if (!f.exists()) {
+                            break;
+                        }
+                        item.minuteFiles.add(f);
                     }
                 }
                 if (item.file.exists()) {

@@ -244,7 +244,7 @@ final class Player {
             index = ((next + attempt) % count + count) % count;
             Feed.Item item = items.get(index);
             try {
-                byte[] data = Feed.read(item.file);
+                byte[] data = Feed.read(item.fileNow());
                 Movie movie = Movie.decodeByteArray(data, 0, data.length);
                 if (movie != null) {
                     view.setMovie(movie, item.name + "   " + (index + 1) + "/" + count);

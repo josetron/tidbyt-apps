@@ -57,7 +57,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,7 +69,7 @@ try:  # the window needs these; the headless --feed mode (GitHub Actions) does n
 except ImportError:
     tk = ttk = Image = ImageChops = ImageDraw = ImageTk = None
 
-VERSION = "1.0.6"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
+VERSION = "1.0.7"  # also in android_tv/AndroidManifest.xml; tools/build_exe.py names the .exe with it
 FROZEN = getattr(sys, "frozen", False)  # running as the single-file TidbytMirror .exe (tools/build_exe.py)
 APP_KEY = r"Software\TidbytMirror"  # installed copy: {"InstallFolder", "DataFolder"} (HKEY_CURRENT_USER)
 PORTABLE_MARK = "portable.ini"     # inside the Data folder next to a portable copy
@@ -117,6 +117,7 @@ STORE_EVERY = 1800  # seconds between refreshes of a store app
 # moment it was drawn, so on the 30-minute schedule a clock ran up to half an hour behind)
 CLOCK_APPS = {"big-clock", "clock-by-henry", "world-clock"}
 CLOCK_EVERY = 60
+FEED_MINUTES = 35  # the TV feed is redrawn every 15 min, so it carries clock pictures for the next 35 minutes
 STORE_CONFIG = {    # passed to every store app; apps ignore what they don't use
     "$tz": "America/Chicago",
     "location": json.dumps({"lat": "30.19", "lng": "-98.09", "locality": "Dripping Springs", "timezone": "America/Chicago"}),
@@ -1595,6 +1596,50 @@ class Mirror:
         self.screen.configure(image=self.photo, text="")
 
 
+def render_minutes(key, star, build):
+    """For the TV feed: the clock app drawn for each of the next FEED_MINUTES minutes (the TV picks the
+    picture for the current minute). Done by copying the app with time.now() replaced by a fixed time.
+    Returns (first minute as a Unix time, [file names]), or None."""
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+    with open(star, encoding="utf-8") as f:
+        source = f.read()
+    if "time.now()" not in source:
+        return None
+    mine = published_settings().get(key, {})
+    config, _ = build(mine) if build.__code__.co_argcount else build()
+    for k, v in mine.items():
+        if k != "snapshot":
+            config[k] = v
+    start = int(time.time()) // 60 * 60
+    work = tempfile.mkdtemp(prefix="clock-")
+    base = os.path.basename(gif_path(key))[:-4]
+
+    def one(i):
+        at = datetime.fromtimestamp(start + 60 * i, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        folder = os.path.join(work, str(i))
+        os.makedirs(folder)
+        copy = os.path.join(folder, os.path.basename(star))
+        with open(copy, "w", encoding="utf-8") as f:
+            f.write(source.replace("time.now()", 'time.parse_time("%s")' % at))
+        name = "%s_m%02d.gif" % (base, i)
+        args = [PIXLET, "render", copy] + ["%s=%s" % kv for kv in config.items()] + ["--gif", "-o",
+                                                                                       os.path.join(OUT, name)]
+        r = subprocess.run(args, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+                           creationflags=NO_WINDOW)
+        return name if r.returncode == 0 and os.path.exists(os.path.join(OUT, name)) else None
+
+    with ThreadPoolExecutor(6) as pool:  # no network involved, so these can run side by side
+        names = list(pool.map(one, range(FEED_MINUTES)))
+    import shutil
+    shutil.rmtree(work, ignore_errors=True)
+    if None in names:
+        log("%s: some minute pictures failed" % key)
+        return None
+    log("%s: %d minute pictures" % (key, len(names)))
+    return start, names
+
+
 def build_feed(out_dir):
     """Renders every app on the device once into out_dir and writes manifest.json: the public
     picture feed the Android TV app plays (android_tv/). Returns the number of apps written."""
@@ -1616,8 +1661,13 @@ def build_feed(out_dir):
         if apps[key]["version"] > 0:
             with open(gif_path(key), "rb") as f:
                 digest = hashlib.sha1(f.read()).hexdigest()[:12]
-            entries.append({"id": key, "name": apps[key]["name"], "file": os.path.basename(gif_path(key)),
-                            "version": digest, "store": apps[key]["store"]})
+            entry = {"id": key, "name": apps[key]["name"], "file": os.path.basename(gif_path(key)),
+                     "version": digest, "store": apps[key]["store"]}
+            if jobs[key][2] == CLOCK_EVERY:
+                minutes = render_minutes(key, star, build)
+                if minutes:
+                    entry["minute_start"], entry["minute_files"] = minutes[0], minutes[1]
+            entries.append(entry)
     with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump({"generated": int(time.time()), "apps": entries}, f, indent=1)
     log("feed: %d apps in %s" % (len(entries), OUT))
