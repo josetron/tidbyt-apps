@@ -1,0 +1,532 @@
+{
+ "generated": 1795880472,
+ "apps": [
+  {
+   "id": "store:sunrise-sunset",
+   "name": "Sunrise Sunset",
+   "file": "store_sunrise-sunset.gif",
+   "version": "664a1b6689db",
+   "store": true
+  },
+  {
+   "id": "store:flags",
+   "name": "Flags",
+   "file": "store_flags.gif",
+   "version": "086a44a0f559",
+   "store": true
+  },
+  {
+   "id": "store:day-night-map",
+   "name": "Day Night Map",
+   "file": "store_day-night-map.gif",
+   "version": "e0ecc23c1240",
+   "store": true
+  },
+  {
+   "id": "store:weather-map",
+   "name": "Weather Map",
+   "file": "store_weather-map.gif",
+   "version": "52e826a71b7a",
+   "store": true
+  },
+  {
+   "id": "store:wsj-news",
+   "name": "WSJ News",
+   "file": "store_wsj-news.gif",
+   "version": "587a23aabcdd",
+   "store": true
+  },
+  {
+   "id": "store:days-to-xmas",
+   "name": "Days to Xmas",
+   "file": "store_days-to-xmas.gif",
+   "version": "69fa32b0d933",
+   "store": true
+  },
+  {
+   "id": "store:nationaltoday",
+   "name": "NationalToday",
+   "file": "store_nationaltoday.gif",
+   "version": "e4408b4d10d2",
+   "store": true
+  },
+  {
+   "id": "store:baby-age",
+   "name": "Baby Age",
+   "file": "store_baby-age.gif",
+   "version": "fce3262bbfc7",
+   "store": true
+  },
+  {
+   "id": "store:death-valley-temp",
+   "name": "Death Valley Temp",
+   "file": "store_death-valley-temp.gif",
+   "version": "acdc7886dc99",
+   "store": true
+  },
+  {
+   "id": "store:word-of-the-day",
+   "name": "Word Of The Day",
+   "file": "store_word-of-the-day.gif",
+   "version": "47d6d3bbe4a7",
+   "store": true
+  },
+  {
+   "id": "store:mlb-leaders",
+   "name": "MLB Leaders",
+   "file": "store_mlb-leaders.gif",
+   "version": "baf9a859ec1e",
+   "store": true
+  },
+  {
+   "id": "store:earthquake-map",
+   "name": "Earthquake Map",
+   "file": "store_earthquake-map.gif",
+   "version": "2b61c5e9f2bc",
+   "store": true
+  },
+  {
+   "id": "store:clock-by-henry",
+   "name": "Clock By Henry",
+   "file": "store_clock-by-henry.gif",
+   "version": "f9e52926aab6",
+   "store": true,
+   "minute_start": 1795880400,
+   "minute_files": [
+    "store_clock-by-henry_m00.gif",
+    "store_clock-by-henry_m01.gif",
+    "store_clock-by-henry_m02.gif",
+    "store_clock-by-henry_m03.gif",
+    "store_clock-by-henry_m04.gif",
+    "store_clock-by-henry_m05.gif",
+    "store_clock-by-henry_m06.gif",
+    "store_clock-by-henry_m07.gif",
+    "store_clock-by-henry_m08.gif",
+    "store_clock-by-henry_m09.gif",
+    "store_clock-by-henry_m10.gif",
+    "store_clock-by-henry_m11.gif",
+    "store_clock-by-henry_m12.gif",
+    "store_clock-by-henry_m13.gif",
+    "store_clock-by-henry_m14.gif",
+    "store_clock-by-henry_m15.gif",
+    "store_clock-by-henry_m16.gif",
+    "store_clock-by-henry_m17.gif",
+    "store_clock-by-henry_m18.gif",
+    "store_clock-by-henry_m19.gif",
+    "store_clock-by-henry_m20.gif",
+    "store_clock-by-henry_m21.gif",
+    "store_clock-by-henry_m22.gif",
+    "store_clock-by-henry_m23.gif",
+    "store_clock-by-henry_m24.gif",
+    "store_clock-by-henry_m25.gif",
+    "store_clock-by-henry_m26.gif",
+    "store_clock-by-henry_m27.gif",
+    "store_clock-by-henry_m28.gif",
+    "store_clock-by-henry_m29.gif",
+    "store_clock-by-henry_m30.gif",
+    "store_clock-by-henry_m31.gif",
+    "store_clock-by-henry_m32.gif",
+    "store_clock-by-henry_m33.gif",
+    "store_clock-by-henry_m34.gif"
+   ]
+  },
+  {
+   "id": "store:world-clock",
+   "name": "World Clock",
+   "file": "store_world-clock.gif",
+   "version": "9fa84620da21",
+   "store": true,
+   "minute_start": 1795880400,
+   "minute_files": [
+    "store_world-clock_m00.gif",
+    "store_world-clock_m01.gif",
+    "store_world-clock_m02.gif",
+    "store_world-clock_m03.gif",
+    "store_world-clock_m04.gif",
+    "store_world-clock_m05.gif",
+    "store_world-clock_m06.gif",
+    "store_world-clock_m07.gif",
+    "store_world-clock_m08.gif",
+    "store_world-clock_m09.gif",
+    "store_world-clock_m10.gif",
+    "store_world-clock_m11.gif",
+    "store_world-clock_m12.gif",
+    "store_world-clock_m13.gif",
+    "store_world-clock_m14.gif",
+    "store_world-clock_m15.gif",
+    "store_world-clock_m16.gif",
+    "store_world-clock_m17.gif",
+    "store_world-clock_m18.gif",
+    "store_world-clock_m19.gif",
+    "store_world-clock_m20.gif",
+    "store_world-clock_m21.gif",
+    "store_world-clock_m22.gif",
+    "store_world-clock_m23.gif",
+    "store_world-clock_m24.gif",
+    "store_world-clock_m25.gif",
+    "store_world-clock_m26.gif",
+    "store_world-clock_m27.gif",
+    "store_world-clock_m28.gif",
+    "store_world-clock_m29.gif",
+    "store_world-clock_m30.gif",
+    "store_world-clock_m31.gif",
+    "store_world-clock_m32.gif",
+    "store_world-clock_m33.gif",
+    "store_world-clock_m34.gif"
+   ]
+  },
+  {
+   "id": "store:costco-gas",
+   "name": "Costco Gas",
+   "file": "store_costco-gas.gif",
+   "version": "659442f198cc",
+   "store": true
+  },
+  {
+   "id": "store:dw-headline",
+   "name": "DW Headline",
+   "file": "store_dw-headline.gif",
+   "version": "1ff7a2360055",
+   "store": true
+  },
+  {
+   "id": "store:divbyt",
+   "name": "Divbyt",
+   "file": "store_divbyt.gif",
+   "version": "187a8dbf3dbf",
+   "store": true
+  },
+  {
+   "id": "store:severewxalertsusa",
+   "name": "SevereWxAlertsUSA",
+   "file": "store_severewxalertsusa.gif",
+   "version": "b3e3a48476c1",
+   "store": true
+  },
+  {
+   "id": "store:theguardiannews",
+   "name": "The Guardian News",
+   "file": "store_theguardiannews.gif",
+   "version": "d21f42c2926d",
+   "store": true
+  },
+  {
+   "id": "store:halloween-countdn",
+   "name": "Halloween CountDn",
+   "file": "store_halloween-countdn.gif",
+   "version": "2d8db3d1ad4e",
+   "store": true
+  },
+  {
+   "id": "store:states-visited",
+   "name": "States Visited",
+   "file": "store_states-visited.gif",
+   "version": "d4e4569c3614",
+   "store": true
+  },
+  {
+   "id": "store:advice",
+   "name": "Advice",
+   "file": "store_advice.gif",
+   "version": "ff3233d68e53",
+   "store": true
+  },
+  {
+   "id": "store:wantedposter",
+   "name": "WantedPoster",
+   "file": "store_wantedposter.gif",
+   "version": "962354dd38e1",
+   "store": true
+  },
+  {
+   "id": "store:formula-1",
+   "name": "Formula 1",
+   "file": "store_formula-1.gif",
+   "version": "c85fb4de57b7",
+   "store": true
+  },
+  {
+   "id": "store:big-clock",
+   "name": "Big Clock",
+   "file": "store_big-clock.gif",
+   "version": "a6499c6983a5",
+   "store": true,
+   "minute_start": 1795880400,
+   "minute_files": [
+    "store_big-clock_m00.gif",
+    "store_big-clock_m01.gif",
+    "store_big-clock_m02.gif",
+    "store_big-clock_m03.gif",
+    "store_big-clock_m04.gif",
+    "store_big-clock_m05.gif",
+    "store_big-clock_m06.gif",
+    "store_big-clock_m07.gif",
+    "store_big-clock_m08.gif",
+    "store_big-clock_m09.gif",
+    "store_big-clock_m10.gif",
+    "store_big-clock_m11.gif",
+    "store_big-clock_m12.gif",
+    "store_big-clock_m13.gif",
+    "store_big-clock_m14.gif",
+    "store_big-clock_m15.gif",
+    "store_big-clock_m16.gif",
+    "store_big-clock_m17.gif",
+    "store_big-clock_m18.gif",
+    "store_big-clock_m19.gif",
+    "store_big-clock_m20.gif",
+    "store_big-clock_m21.gif",
+    "store_big-clock_m22.gif",
+    "store_big-clock_m23.gif",
+    "store_big-clock_m24.gif",
+    "store_big-clock_m25.gif",
+    "store_big-clock_m26.gif",
+    "store_big-clock_m27.gif",
+    "store_big-clock_m28.gif",
+    "store_big-clock_m29.gif",
+    "store_big-clock_m30.gif",
+    "store_big-clock_m31.gif",
+    "store_big-clock_m32.gif",
+    "store_big-clock_m33.gif",
+    "store_big-clock_m34.gif"
+   ]
+  },
+  {
+   "id": "store:positive-quote",
+   "name": "Positive Quote",
+   "file": "store_positive-quote.gif",
+   "version": "f76924b6d568",
+   "store": true
+  },
+  {
+   "id": "store:bitcointicker",
+   "name": "BitcoinTicker",
+   "file": "store_bitcointicker.gif",
+   "version": "e8215adb6476",
+   "store": true
+  },
+  {
+   "id": "store:thanksgiving-day",
+   "name": "Thanksgiving Day",
+   "file": "store_thanksgiving-day.gif",
+   "version": "0318d1d82900",
+   "store": true
+  },
+  {
+   "id": "store:days-to-st-pats",
+   "name": "Days to St Pats",
+   "file": "store_days-to-st-pats.gif",
+   "version": "22d2186ba002",
+   "store": true
+  },
+  {
+   "id": "store:index-ticker",
+   "name": "Index Ticker",
+   "file": "store_index-ticker.gif",
+   "version": "f6ada572fefd",
+   "store": true
+  },
+  {
+   "id": "store:espn-news",
+   "name": "ESPN News",
+   "file": "store_espn-news.gif",
+   "version": "424f464cf96a",
+   "store": true
+  },
+  {
+   "id": "store:bday-countdown",
+   "name": "Bday Countdown",
+   "file": "store_bday-countdown.gif",
+   "version": "2d3c12ee489c",
+   "store": true
+  },
+  {
+   "id": "store:summer-countdown",
+   "name": "Summer Countdown",
+   "file": "store_summer-countdown.gif",
+   "version": "67d3371c1176",
+   "store": true
+  },
+  {
+   "id": "store:christmascountdown",
+   "name": "Christmas Countdn",
+   "file": "store_christmascountdown.gif",
+   "version": "af1c9054c0af",
+   "store": true
+  },
+  {
+   "id": "store:new-years-countdown",
+   "name": "New Year's CntDwn",
+   "file": "store_new-years-countdown.gif",
+   "version": "86c7b1da6937",
+   "store": true
+  },
+  {
+   "id": "store:mayo-clinic-news",
+   "name": "Mayo Clinic News",
+   "file": "store_mayo-clinic-news.gif",
+   "version": "864464d4a450",
+   "store": true
+  },
+  {
+   "id": "store:year-progress",
+   "name": "Year Progress",
+   "file": "store_year-progress.gif",
+   "version": "653afc7877ad",
+   "store": true
+  },
+  {
+   "id": "store:billboardtop10",
+   "name": "BillboardTop10",
+   "file": "store_billboardtop10.gif",
+   "version": "d26d2d4e45e6",
+   "store": true
+  },
+  {
+   "id": "store:quote-of-the-day",
+   "name": "A Quote A Day",
+   "file": "store_quote-of-the-day.gif",
+   "version": "c04c9d671fe4",
+   "store": true
+  },
+  {
+   "id": "store:fine-art",
+   "name": "Fine Art",
+   "file": "store_fine-art.gif",
+   "version": "0ac5b05d9fbc",
+   "store": true
+  },
+  {
+   "id": "store:stadium-tracker",
+   "name": "Stadium Tracker",
+   "file": "store_stadium-tracker.gif",
+   "version": "5a70df960fd0",
+   "store": true
+  },
+  {
+   "id": "store:iconote",
+   "name": "IcoNote",
+   "file": "store_iconote.gif",
+   "version": "84d810e5a56e",
+   "store": true
+  },
+  {
+   "id": "store:sky-news",
+   "name": "Sky News",
+   "file": "store_sky-news.gif",
+   "version": "89211a2dfb8e",
+   "store": true
+  },
+  {
+   "id": "store:mlbdivstandings",
+   "name": "MlbDivStandings",
+   "file": "store_mlbdivstandings.gif",
+   "version": "1bac173fe90f",
+   "store": true
+  },
+  {
+   "id": "store:mlb-magic-number",
+   "name": "MLB Magic Number",
+   "file": "store_mlb-magic-number.gif",
+   "version": "66f6b98b2012",
+   "store": true
+  },
+  {
+   "id": "store:tennis-rankings",
+   "name": "Tennis Rankings",
+   "file": "store_tennis-rankings.gif",
+   "version": "7c3aafbc134f",
+   "store": true
+  },
+  {
+   "id": "weathernow",
+   "name": "Weather Now",
+   "file": "weathernow.gif",
+   "version": "0c8c646680e6",
+   "store": false
+  },
+  {
+   "id": "weatherforecast",
+   "name": "Weather Forecast",
+   "file": "weatherforecast.gif",
+   "version": "797a30f2342e",
+   "store": false
+  },
+  {
+   "id": "monalisa",
+   "name": "Mona Lisa",
+   "file": "monalisa.gif",
+   "version": "894eeafa146d",
+   "store": false
+  },
+  {
+   "id": "pixelmuseum",
+   "name": "Pixel Museum",
+   "file": "pixelmuseum.gif",
+   "version": "2bf0b58ce71b",
+   "store": false
+  },
+  {
+   "id": "marketpulse",
+   "name": "MarketPulse",
+   "file": "marketpulse.gif",
+   "version": "59b0392f7964",
+   "store": false
+  },
+  {
+   "id": "marketpulsestocks",
+   "name": "MarketPulse Stocks",
+   "file": "marketpulsestocks.gif",
+   "version": "772a9dcf5799",
+   "store": false
+  },
+  {
+   "id": "pixelaquarium",
+   "name": "Pixel Aquarium",
+   "file": "pixelaquarium.gif",
+   "version": "cb45d8c535f6",
+   "store": false
+  },
+  {
+   "id": "nowplaying",
+   "name": "Now Playing",
+   "file": "nowplaying.gif",
+   "version": "ab17576e89e1",
+   "store": false
+  },
+  {
+   "id": "astrosnews",
+   "name": "Astros News",
+   "file": "astrosnews.gif",
+   "version": "f7f66d841e8a",
+   "store": false
+  },
+  {
+   "id": "astrosstars",
+   "name": "Astros Stars",
+   "file": "astrosstars.gif",
+   "version": "b8b7e9cdecb6",
+   "store": false
+  },
+  {
+   "id": "astrosgameday",
+   "name": "Astros GameDay",
+   "file": "astrosgameday.gif",
+   "version": "272818742be4",
+   "store": false
+  },
+  {
+   "id": "laketravis",
+   "name": "Lake Travis",
+   "file": "laketravis.gif",
+   "version": "a1bd38fe4282",
+   "store": false
+  },
+  {
+   "id": "darksky",
+   "name": "Dark Sky Tonight",
+   "file": "darksky.gif",
+   "version": "4f99f9f76f5b",
+   "store": false
+  }
+ ]
+}
